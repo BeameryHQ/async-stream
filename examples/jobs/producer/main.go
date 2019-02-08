@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/SeedJobs/async-stream/jobs"
+	"github.com/BeameryHQ/async-stream/jobs"
 	"go.etcd.io/etcd/clientv3"
 	"log"
 	"strconv"

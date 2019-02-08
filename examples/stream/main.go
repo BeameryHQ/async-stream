@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/SeedJobs/async-stream/stream"
+	"github.com/BeameryHQ/async-stream/stream"
 	"log"
 	"time"
 
@@ -20,17 +20,17 @@ func main() {
 		log.Fatalf("etcd client creation failed %v", err)
 	}
 
+	listItems := 0
+
 	f := stream.NewEtcdFlow(cli)
-	f.RegisterListHandler("/async", func(event *stream.FlowEvent) error {
+	f.RegisterListHandler("/types/beamery/application", func(event *stream.FlowEvent) error {
 		fmt.Println("got a key from key handler : ", event.Kv.Key)
-		fmt.Println("key handler value is : ", event.Kv.Value)
-		return nil
-	})
-	f.RegisterWatchHandler("/async", func(event *stream.FlowEvent) error {
-		fmt.Println("got a new event ", event)
-		fmt.Printf("the key is %s ", string(event.Kv.Key))
-		fmt.Println("the value is : ", string(event.Kv.Value))
+		listItems++
+		if listItems%30 == 0 {
+			log.Println("total keys fetched so far : ", listItems)
+		}
 		return nil
 	})
 	f.Run(context.Background())
+	log.Println("total items processed : ", listItems)
 }

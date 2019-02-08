@@ -5,7 +5,7 @@ package lb
 import (
 	"context"
 	"github.com/satori/go.uuid"
-	"github.com/SeedJobs/async-stream/tests"
+	"github.com/BeameryHQ/async-stream/tests"
 	"os"
 	"sync"
 	"testing"
