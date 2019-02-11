@@ -1,4 +1,4 @@
-### Asynchronous Stream Processing Utilities
+## Asynchronous Stream Processing Utilities
 
 Project's aim is to supply convenient utilities for stream processing.Currently they work only against etcd.
 
