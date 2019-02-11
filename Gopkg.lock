@@ -10,7 +10,7 @@
   version = "v1.3.0"
 
 [[projects]]
-  digest = "1:812ef5c0ff0dc70d100b57e2bec61aaf09b54873048f00bf685be3104943920b"
+  digest = "1:0bc9fe59e23786a6d5f5b65d2676904d29aafcc79fa9fca4472fe0d15ee15656"
   name = "github.com/coreos/etcd"
   packages = [
     "auth/authpb",
@@ -20,8 +20,8 @@
     "pkg/types",
   ]
   pruneopts = ""
-  revision = "2cf9e51d2a78003b164c2998886158e60ded1cbb"
-  version = "v3.3.11"
+  revision = "d57e8b8d97adfc4a6c224fe116714bf1a1f3beb9"
+  version = "v3.3.12"
 
 [[projects]]
   digest = "1:fb6b4ea21671a4a8037cccc0a582caada51b4ac550219f42b9e8ce4671bc568b"
@@ -82,12 +82,12 @@
   revision = "49a4782e9908fe098c907022a1bd7519c79803d6"
 
 [[projects]]
-  digest = "1:812ef5c0ff0dc70d100b57e2bec61aaf09b54873048f00bf685be3104943920b"
+  digest = "1:0bc9fe59e23786a6d5f5b65d2676904d29aafcc79fa9fca4472fe0d15ee15656"
   name = "go.etcd.io/etcd"
   packages = ["clientv3"]
   pruneopts = ""
-  revision = "2cf9e51d2a78003b164c2998886158e60ded1cbb"
-  version = "v3.3.11"
+  revision = "d57e8b8d97adfc4a6c224fe116714bf1a1f3beb9"
+  version = "v3.3.12"
 
 [[projects]]
   branch = "master"
@@ -99,7 +99,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:1e9704e5379e68ac473c28aeb3f7e7cd4036ae8a246bf0285b5ebdbb8e0cfacf"
+  digest = "1:1d52dac9bdc355f83ad9916bc657baa7d8735a108ae749da8e8d3513a1b15f28"
   name = "golang.org/x/net"
   packages = [
     "context",
@@ -111,18 +111,18 @@
     "trace",
   ]
   pruneopts = ""
-  revision = "d26f9f9a57f3fab6a695bec0d84433c2c50f8bbf"
+  revision = "65e2d4e15006aab9813ff8769e768bbf4bb667a0"
 
 [[projects]]
   branch = "master"
-  digest = "1:e6b1be818cb1cf3f23eda1497644be36e9f710f558fb28c4eb025a76ad9a9749"
+  digest = "1:489610147902fe0c7229218c749bb25a8a9ecce0d726ae4f8662517319f32554"
   name = "golang.org/x/sys"
   packages = [
     "unix",
     "windows",
   ]
   pruneopts = ""
-  revision = "2970a3744de33489e46eba373c73655bc2377116"
+  revision = "41f3e6584952bb034a481797859f6ab34b6803bd"
 
 [[projects]]
   digest = "1:5acd3512b047305d49e8763eef7ba423901e85d5dd2fd1e71778a0ea8de10bd4"
@@ -157,11 +157,11 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:96ad251f71dd69e0f15071720f9970f599f075b28fa96ebd8a547dcd04435856"
+  digest = "1:91f75dc679abcf04b29b064a5b9c40a0b0561c86c322010fbf6fc08040cc48bc"
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
   pruneopts = ""
-  revision = "8ac453e89fca495c0d17f98932642f392e2a11f3"
+  revision = "4b09977fb92221987e99d190c8f88f2c92727a29"
 
 [[projects]]
   digest = "1:39d4d828b87d58d114fdc211f0638f32dcae84019fe17d6b48f9b697f4b60213"
@@ -206,14 +206,14 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:f5513b789c558fd81d9ea8e3b2ee3e28c8af866a292af148c5883bec83f184e7"
+  digest = "1:0ecbaa27e4e0a411dc99c70a6740ff9c7a9ca55d81f0119bcd0e2fe49b10b4c3"
   name = "k8s.io/apimachinery"
   packages = [
     "pkg/util/clock",
     "pkg/util/runtime",
   ]
   pruneopts = ""
-  revision = "0e6dcdd1b5ce54a78820c9bad24e2dd32b3b2e79"
+  revision = "095b9d2034671175d5f4d8c61040516f2ce9d05e"
 
 [[projects]]
   digest = "1:96ab89894f66b77a0137bba12e607c6a9be992acadfb075b5602939e8519a157"

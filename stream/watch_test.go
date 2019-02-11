@@ -4,8 +4,8 @@ package stream
 
 import (
 	"context"
+	"github.com/BeameryHQ/async-stream/tests"
 	"github.com/go-test/deep"
-	"github.com/SeedJobs/async-stream/tests"
 	"os"
 	"sync"
 	"testing"
@@ -49,6 +49,46 @@ func TestEtcdFlow_RegisterListHandler(t *testing.T) {
 	}
 }
 
+func TestEtcdFlow_RegisterListHandler_Pagination(t *testing.T) {
+	server := os.Getenv("ETCD_SERVER")
+	res := tests.NewEtcdResource(t, server)
+	path := res.RegisterRandom()
+	defer res.Cleanup()
+
+	t.Logf("testing the etcd flow %s", path)
+
+	ctx := context.Background()
+
+	expectedValues := []string{
+		"foo",
+		"bar",
+		"flex",
+		"rex",
+		"zoo",
+		"moo",
+	}
+
+	expected := res.PutData(path, expectedValues)
+
+	actual := [][]string{}
+	flow := NewEtcdFlow(res.Cli, WithPageSize(2))
+	flow.RegisterListHandler(
+		path,
+		func(event *FlowEvent) error {
+			//t.Logf("list handler %+v", event)
+			actual = append(actual, []string{
+				event.Kv.Key,
+				event.Kv.Value,
+			})
+
+			return nil
+		})
+	flow.Run(ctx)
+
+	if diff := deep.Equal(expected, actual); diff != nil {
+		t.Fatalf("list handler failure : %v", diff)
+	}
+}
 
 func TestEtcdFlow_RegisterWatchHandler(t *testing.T) {
 	server := os.Getenv("ETCD_SERVER")
@@ -76,7 +116,7 @@ func TestEtcdFlow_RegisterWatchHandler(t *testing.T) {
 
 	actualList := [][]string{}
 	actualWatch := [][]string{}
-	listingDone :=  make(chan bool)
+	listingDone := make(chan bool)
 	watchingDone := make(chan bool)
 
 	flow := NewEtcdFlow(res.Cli)
@@ -92,7 +132,7 @@ func TestEtcdFlow_RegisterWatchHandler(t *testing.T) {
 				event.Kv.Value,
 			})
 
-			if len(actualList) == len(expected){
+			if len(actualList) == len(expected) {
 				listingDone <- true
 			}
 
@@ -105,7 +145,7 @@ func TestEtcdFlow_RegisterWatchHandler(t *testing.T) {
 			//fmt.Printf("watch event key %s\n", event.Kv.Key)
 			//fmt.Printf("watch event value %s\n", event.Kv.Value)
 
-			if event.IsDeleted(){
+			if event.IsDeleted() {
 				return nil
 			}
 			actualWatch = append(actualWatch, []string{
@@ -113,8 +153,7 @@ func TestEtcdFlow_RegisterWatchHandler(t *testing.T) {
 				event.Kv.Value,
 			})
 
-
-			if len(actualWatch) == len(expectedWatchValues){
+			if len(actualWatch) == len(expectedWatchValues) {
 				watchingDone <- true
 			}
 
@@ -131,13 +170,12 @@ func TestEtcdFlow_RegisterWatchHandler(t *testing.T) {
 	}()
 
 	t.Logf("waiting for listing to be over")
-	<- listingDone
-
+	<-listingDone
 
 	expectedWatch := res.PutData(path, expectedWatchValues)
 
 	t.Logf("waiting for watch handler to be over")
-	<- watchingDone
+	<-watchingDone
 
 	if diff := deep.Equal(expected, actualList); diff != nil {
 		t.Fatalf("list handler failure : %v", diff)

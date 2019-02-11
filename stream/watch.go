@@ -2,19 +2,21 @@ package stream
 
 import (
 	"context"
+	"github.com/BeameryHQ/async-stream/logging"
 	"github.com/Sirupsen/logrus"
 	"github.com/coreos/etcd/mvcc/mvccpb"
-	"github.com/SeedJobs/async-stream/logging"
 	"go.etcd.io/etcd/clientv3"
 
 	"sync"
 )
 
 const (
-	watchPathBuffer = 1000
+	defaultWatchPathBuffer = 1000
+	defaultPageSize        = 30
 )
 
 type EtcdFlow struct {
+	config        *flowConfig
 	logger        *logrus.Entry
 	watchHandlers map[string][]FlowEventHandler
 	watchBufChans map[string]chan *clientv3.Event
@@ -24,12 +26,45 @@ type EtcdFlow struct {
 	readyWatchChan map[string]chan bool
 }
 
-func NewEtcdFlow(cli *clientv3.Client) Flow {
+type flowConfig struct {
+	watchBufferSize int
+	pageSize        int
+}
+
+func newFlowConfig() *flowConfig {
+	return &flowConfig{
+		watchBufferSize: defaultWatchPathBuffer,
+		pageSize:        defaultPageSize,
+	}
+}
+
+type FlowOption func(config *flowConfig)
+
+func WithWatchBufferSize(size int) FlowOption {
+	return func(config *flowConfig) {
+		config.watchBufferSize = size
+	}
+}
+
+func WithPageSize(size int) FlowOption {
+	return func(config *flowConfig) {
+		config.pageSize = size
+	}
+}
+
+func NewEtcdFlow(cli *clientv3.Client, opts ...FlowOption) Flow {
 	logger := logging.GetLogger().WithFields(
 		logrus.Fields{"component": "flow",
 		},
 	)
+
+	config := newFlowConfig()
+	for _, o := range opts {
+		o(config)
+	}
+
 	return &EtcdFlow{
+		config:         config,
 		logger:         logger,
 		watchHandlers:  map[string][]FlowEventHandler{},
 		keyHandlers:    map[string][]FlowEventHandler{},
@@ -69,14 +104,12 @@ func (f *EtcdFlow) Run(ctx context.Context) {
 
 	barriers := len(f.watchHandlers)
 	var wg sync.WaitGroup
-	wg.Add(barriers)
+	if barriers > 0 {
+		wg.Add(barriers)
+	}
 
 	for p, hs := range f.watchHandlers {
-		if err := f.createPathIfNotExists(ctx, p); err != nil {
-			f.logger.Fatal("creating the path failed ", err)
-		}
-
-		f.watchBufChans[p] = make(chan *clientv3.Event, watchPathBuffer)
+		f.watchBufChans[p] = make(chan *clientv3.Event, f.config.watchBufferSize)
 
 		go func(path string, handlers []FlowEventHandler) {
 			defer wg.Done()
@@ -84,7 +117,7 @@ func (f *EtcdFlow) Run(ctx context.Context) {
 			f.logger.Debugln("creating a watch channel on path : ", path)
 
 			// if there's a list handler on than path signal it
-			if f.keyHandlers[path] != nil{
+			if f.keyHandlers[path] != nil {
 				logrus.Debug("waiting for list handler to start ", path)
 				f.readyWatchChan[path] <- true
 			}
@@ -117,65 +150,82 @@ func (f *EtcdFlow) Run(ctx context.Context) {
 		}(p, hs)
 
 	}
-
+	f.logger.Debug("watch handlers started", len(f.watchHandlers))
 	// first we do the key handlers and then start the
 	// async watch handlers
 	for p, hs := range f.keyHandlers {
-		if err := f.createPathIfNotExists(ctx, p); err != nil {
-			f.logger.Fatal("creating the path failed ", err)
-		}
-
 		// wait for the watcher to start so we dont miss any events
 		//f.logger.Println("ready chans", f.readyWatchChan)
-		if f.readyWatchChan[p] != nil{
+		if f.readyWatchChan[p] != nil {
 			f.logger.Debug("waiting for the chan to send watch ready ", p)
-			<- f.readyWatchChan[p]
+			<-f.readyWatchChan[p]
 		}
 
 		for _, h := range hs {
+			f.logger.Debug("starting processing path for list handlers ", p, h)
 			if err := f.fetchProcessKeys(ctx, p, h); err != nil {
 				f.logger.Fatalf("failed processing path with key handler %s : %v", p, err)
 			}
 		}
 	}
 
-
-
 	wg.Wait()
 }
 
 func (f *EtcdFlow) fetchProcessKeys(ctx context.Context, path string, handler FlowEventHandler) error {
-	resp, err := f.cli.Get(ctx, path, clientv3.WithPrefix())
+
+	countResp, err := f.cli.Get(ctx, path, clientv3.WithPrefix(), clientv3.WithCountOnly())
 	if err != nil {
 		return err
 	}
 
-	for _, k := range resp.Kvs {
-		err := handler(flowEventFromEtcdListKey(k))
-		if err != nil {
-			f.logger.Printf("skipping key in key handler %s : %v", k, err)
-			continue
-		}
+	f.logger.Debugf("found %d items on path : %s, starting the processing", countResp.Count, path)
+	opts := []clientv3.OpOption{
+		clientv3.WithPrefix(),
+		clientv3.WithSort(clientv3.SortByKey, clientv3.SortAscend),
+		clientv3.WithLimit(int64(f.config.pageSize)),
 	}
 
-	return nil
-}
+	firstFetch := true
+	currentPath := path
+	for {
+		resp, err := f.cli.Get(
+			ctx,
+			currentPath,
+			opts...,
+		)
+		if err != nil {
+			return err
+		}
 
-func (f *EtcdFlow) createPathIfNotExists(ctx context.Context, path string) error {
-	//f.logger.Println("running createPath for : ", path)
-	//resp, err := f.cli.Get(ctx, path, clientv3.WithCountOnly())
-	//if err != nil {
-	//	return err
-	//}
-	//
-	//if resp.Count > 0 {
-	//	return nil
-	//}
-	//
-	//_, err = f.cli.Put(ctx, path, "")
-	//if err != nil {
-	//	return err
-	//}
+		if firstFetch {
+			opts = append(opts, clientv3.WithFromKey(), clientv3.WithRange(path+"/x00"))
+		}
+
+		keys := resp.Kvs
+		if len(keys) == 0 {
+			break
+		}
+
+		if !firstFetch {
+			if len(keys) == 1 {
+				break
+			}
+			keys = keys[1:]
+		}
+		currentPath = string(keys[len(keys)-1].Key)
+
+		for _, k := range keys {
+			err := handler(flowEventFromEtcdListKey(k))
+			if err != nil {
+				f.logger.Printf("skipping key in key handler %s : %v", k, err)
+				continue
+			}
+		}
+
+		firstFetch = false
+
+	}
 
 	return nil
 }

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Sirupsen/logrus"
-	"github.com/SeedJobs/async-stream/jobs"
+	"github.com/BeameryHQ/async-stream/jobs"
 	"go.etcd.io/etcd/clientv3"
 	"log"
 	"math/rand"

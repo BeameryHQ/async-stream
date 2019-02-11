@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/satori/go.uuid"
-	"github.com/SeedJobs/async-stream/lb"
+	"github.com/BeameryHQ/async-stream/lb"
 	"go.etcd.io/etcd/clientv3"
 	"log"
 	"time"
