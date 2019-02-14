@@ -3,10 +3,10 @@ package jobs
 import (
 	"context"
 	"fmt"
-	"github.com/Sirupsen/logrus"
 	"github.com/BeameryHQ/async-stream/lb"
-	"github.com/BeameryHQ/async-stream/stream"
 	"github.com/BeameryHQ/async-stream/logging"
+	"github.com/BeameryHQ/async-stream/stream"
+	"github.com/Sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 	"k8s.io/client-go/util/workqueue"
 	"math"
@@ -158,7 +158,7 @@ func (s *streamConsumer) runMonitorWorkers() {
 		go func() {
 			defer func() {
 				if rec := recover(); rec != nil {
-					s.logger.Error("worker crashed restarting it ", rec)
+					s.logger.Error("worker crashed restarting it : ", rec)
 				}
 				workers <- true
 			}()
@@ -234,6 +234,7 @@ func (s *streamConsumer) streamHandler(event *stream.FlowEvent) error {
 }
 
 func (s *streamConsumer) processQueue() {
+
 	key, exit := s.queue.Get()
 	defer s.queue.Done(key)
 	if exit {
@@ -247,6 +248,17 @@ func (s *streamConsumer) processQueue() {
 		s.logger.Warningf("fetching the jobId %s failed : %v ", jobId, err)
 		return
 	}
+
+	defer func() {
+		if rec := recover(); rec != nil {
+			err := s.jobStore.MarkFailed(s.ctx, jobId, fmt.Errorf("%s", rec))
+			if err != nil {
+				s.logger.Errorf("couldn't mark the job as failed on panic: %v", err)
+			}
+			// raise it again so can be handled by worker monitor to restart the current worker
+			panic(rec)
+		}
+	}()
 
 	// check if need to enqueue the job or is something we need to skip
 	if s.shouldSkipTheJob(jobId, j) {
