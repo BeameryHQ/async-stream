@@ -2,11 +2,12 @@ package lb
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/BeameryHQ/async-stream/logging"
+	"github.com/BeameryHQ/async-stream/stream"
 	"github.com/Sirupsen/logrus"
 	"github.com/serialx/hashring"
-	"github.com/BeameryHQ/async-stream/stream"
-	"github.com/BeameryHQ/async-stream/logging"
 	"go.etcd.io/etcd/clientv3"
 	"regexp"
 	"strings"
@@ -14,9 +15,17 @@ import (
 	"time"
 )
 
+var (
+	DownErr   = errors.New("lb down")
+	PausedErr = errors.New("lb paused")
+)
+
 const (
 	defaultLbSubPath  = "/lb"
-	defaultSettleTime = time.Second * 10
+	defaultSettleTime = time.Second * 20
+
+	pauseCmd   = "PAUSE"
+	unpauseCmd = "UNPAUSE"
 )
 
 type etcdBakedLoadBalancer struct {
@@ -32,6 +41,10 @@ type etcdBakedLoadBalancer struct {
 	lastRingUpdate time.Time
 	notifyChan     chan *LbEvent
 	settleTime     time.Duration
+	stopped        bool
+	stoppedMu      *sync.Mutex
+	lbPauseChan    chan string
+	lbSettleChan   chan time.Time
 }
 
 type optionalConfig struct {
@@ -98,9 +111,14 @@ func NewEtcdLoadBalancer(ctx context.Context, cli *clientv3.Client, path string,
 		cache: map[string]bool{
 			myTarget: true,
 		},
-		notifyChan: notifyChan,
-		settleTime: config.settleTime,
+		notifyChan:   notifyChan,
+		settleTime:   config.settleTime,
+		stoppedMu:    &sync.Mutex{},
+		lbPauseChan:  make(chan string, 100),
+		lbSettleChan: make(chan time.Time, 100),
 	}
+
+	go l.monitorLbPause()
 
 	if err := l.addTargetRemote(ctx, myTarget); err != nil {
 		return nil, err
@@ -120,16 +138,26 @@ func NewEtcdLoadBalancer(ctx context.Context, cli *clientv3.Client, path string,
 func (l *etcdBakedLoadBalancer) Target(key string, waitSettleTime bool) (string, error) {
 	if waitSettleTime {
 		for {
-			now := time.Now().UTC()
-			lastUpdate := l.getLastUpdated()
-			if lastUpdate.Add(l.settleTime).After(now) {
-				runIn := lastUpdate.Add(l.settleTime).Sub(now)
-				l.logger.Debugln("waiting for settle time : ", runIn)
-				time.Sleep(runIn)
-			} else {
+			stopped, err := l.isStopped()
+			if err != nil {
+				return "", err
+			}
+
+			if !stopped {
 				break
 			}
+			logrus.Debug("the lb is locked we sleep")
+			time.Sleep(time.Second * 5)
 		}
+	}
+
+	stopped, err := l.isStopped()
+	if err != nil {
+		return "", err
+	}
+
+	if stopped {
+		return "", PausedErr
 	}
 
 	return l.getNodeSafe(key)
@@ -194,11 +222,18 @@ func (l *etcdBakedLoadBalancer) registerTarget(target string, skipNotification b
 	l.ringLock.Lock()
 	defer l.ringLock.Unlock()
 
+	l.setPauseSettle()
+	if target == l.myTarget {
+		l.clearPause()
+		skipNotification = true
+	}
+
 	if l.cache[target] {
 		return nil
 	}
 
 	l.cache[target] = true
+
 	l.ring = l.ring.AddNode(target)
 	l.lastRingUpdate = time.Now().UTC()
 
@@ -218,14 +253,23 @@ func (l *etcdBakedLoadBalancer) removeTarget(target string) error {
 	l.ringLock.Lock()
 	defer l.ringLock.Unlock()
 
+	l.setPauseSettle()
+	skipNotification := false
+	if target == l.myTarget {
+		l.clearPause()
+		skipNotification = true
+	}
+
 	delete(l.cache, target)
 	l.ring = l.ring.RemoveNode(target)
 	l.lastRingUpdate = time.Now().UTC()
 
-	_ = l.sendNotification(&LbEvent{
-		Event:  TargetRemoved,
-		Target: target,
-	})
+	if !skipNotification {
+		_ = l.sendNotification(&LbEvent{
+			Event:  TargetRemoved,
+			Target: target,
+		})
+	}
 
 	l.logger.Debugln("removed a target : ", target, l.cache)
 	return nil
@@ -234,28 +278,36 @@ func (l *etcdBakedLoadBalancer) removeTarget(target string) error {
 func (l *etcdBakedLoadBalancer) addTargetRemote(ctx context.Context, target string) error {
 	key := l.path + "/" + target
 
-	lease := clientv3.NewLease(l.cli)
-	leaseResp, err := lease.Grant(ctx, 5)
+	keepAliveChan, err := l.getKeepAliveChan(ctx, key)
 	if err != nil {
 		return err
-	}
-
-	_, err = l.cli.Put(ctx, key, "", clientv3.WithLease(leaseResp.ID))
-	if err != nil {
-		return err
-	}
-
-	keepAliveResp, err := lease.KeepAlive(ctx, leaseResp.ID)
-	if err != nil {
-		return fmt.Errorf("keepalive failed : %v", err)
 	}
 
 	go func() {
-		// TODO: do something about when we get an uncoverable resp
+
 		for ; ; {
 			select {
-			case _ = <-keepAliveResp:
-			//l.logger.Println("keepalive beat ...", alive)
+			case _, ok := <-keepAliveChan:
+				if !ok {
+					l.setPause()
+					l.logger.Errorf("keepalive channel was closed, will retry to recover")
+					keepAliveChan = nil
+					err = RetryNormal(func() error {
+						l.logger.Warningf("retry to recover the channel")
+						var err error
+						keepAliveChan, err = l.getKeepAliveChan(ctx, key)
+						return err
+					})
+
+					if err != nil {
+						l.logger.Errorf("keepalive channel was closed and can't be recovered exiting")
+						// make sure we stop the whole thing
+						l.cancelFunc()
+						return
+					}
+					l.clearPause()
+				}
+				//l.logger.Println("keepalive beat ...", alive)
 			case <-l.ctx.Done():
 				l.logger.Debug("stop signal received exiting keep alive loop")
 				return
@@ -265,6 +317,21 @@ func (l *etcdBakedLoadBalancer) addTargetRemote(ctx context.Context, target stri
 
 	l.lastRingUpdate = time.Now().UTC()
 	return nil
+}
+
+func (l *etcdBakedLoadBalancer) getKeepAliveChan(ctx context.Context, key string) (<-chan *clientv3.LeaseKeepAliveResponse, error) {
+	lease := clientv3.NewLease(l.cli)
+	leaseResp, err := lease.Grant(ctx, 5)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = l.cli.Put(ctx, key, "", clientv3.WithLease(leaseResp.ID))
+	if err != nil {
+		return nil, err
+	}
+
+	return lease.KeepAlive(ctx, leaseResp.ID)
 }
 
 func (l *etcdBakedLoadBalancer) extractTargetFromKey(key string) (string, error) {
@@ -304,4 +371,72 @@ func (l *etcdBakedLoadBalancer) watchHandler(event *stream.FlowEvent) error {
 	}
 
 	return l.removeTarget(target)
+}
+
+func (l *etcdBakedLoadBalancer) isStopped() (bool, error) {
+	l.stoppedMu.Lock()
+	defer l.stoppedMu.Unlock()
+
+	if l.ctx.Err() != nil {
+		l.logger.Errorf("lb is down, can't continue %v", l.ctx.Err())
+		return false, DownErr
+	}
+
+	return l.stopped, nil
+}
+
+func (l *etcdBakedLoadBalancer) setStop(val bool) {
+	l.stoppedMu.Lock()
+	defer l.stoppedMu.Unlock()
+	l.stopped = val
+}
+
+func (l *etcdBakedLoadBalancer) setPause() {
+	l.setStop(true)
+	l.lbPauseChan <- pauseCmd
+}
+
+func (l *etcdBakedLoadBalancer) clearPause() {
+	l.lbPauseChan <- unpauseCmd
+}
+
+func (l *etcdBakedLoadBalancer) setPauseSettle() {
+	l.setStop(true)
+	l.lbSettleChan <- time.Now().UTC()
+}
+
+func (l *etcdBakedLoadBalancer) monitorLbPause() {
+	stopped := l.stopped
+	changed := false
+	for {
+		select {
+		case t := <-l.lbSettleChan:
+			changed = true
+			stopped = true
+			now := time.Now().UTC()
+			lastUpdate := t
+			if lastUpdate.Add(l.settleTime).After(now) {
+				runIn := lastUpdate.Add(l.settleTime).Sub(now)
+				l.logger.Debug("waiting for settle time : ", runIn)
+				time.Sleep(runIn)
+			}
+			stopped = false
+		case cmd := <-l.lbPauseChan:
+			changed = true
+			if cmd == pauseCmd {
+				stopped = true
+			} else {
+				stopped = false
+			}
+		case <-l.ctx.Done():
+			l.logger.Debug("exiting the lb pause monitor")
+			return
+		case <-time.After(time.Second * 3):
+			if changed {
+				l.logger.Debug("setting pause to ", stopped)
+				l.setStop(stopped)
+			}
+			changed = false
+		}
+	}
 }
