@@ -6,9 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/Sirupsen/logrus"
 	"github.com/BeameryHQ/async-stream/stream"
 	"github.com/BeameryHQ/async-stream/tests"
+	"github.com/Sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 	"os"
 	"sync"
@@ -56,6 +56,12 @@ func (sh *failOnceThenOkHandler) Handle(jobStore JobStore, j *Job, logger *logru
 	return nil
 }
 
+type alwaysPanicHandler struct{}
+
+func (sh *alwaysPanicHandler) Handle(jobStore JobStore, j *Job, logger *logrus.Entry) error {
+	panic("panic")
+}
+
 func TestEtcdJobStore_Run(t *testing.T) {
 	t.Logf("testing a successful case")
 
@@ -89,6 +95,9 @@ func TestEtcdJobStore_Run(t *testing.T) {
 
 	taskNameFailOnce := "test.failOnce"
 	consumer.RegisterHandler(taskNameFailOnce, &failOnceThenOkHandler{})
+
+	taskNameAlwaysPanic := "test.alwaysPanic"
+	consumer.RegisterHandler(taskNameAlwaysPanic, &alwaysPanicHandler{})
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -169,6 +178,25 @@ func TestEtcdJobStore_Run(t *testing.T) {
 
 				if j.Errors[len(j.Errors)-1] != "once" {
 					return false, fmt.Errorf("err mismatch ")
+				}
+
+				return true, nil
+			}},
+		{
+			name:     "alwayspanic",
+			taskName: taskNameAlwaysPanic,
+			predicate: func(j *Job) (bool, error) {
+				ok := j.State == StateErrored
+				if !ok {
+					return false, nil
+				}
+
+				if j.CurrentRetry < j.MaxRetry {
+					return false, nil
+				}
+
+				if j.Errors[len(j.Errors)-1] != "panic" {
+					return false, fmt.Errorf("err mismatch %s", j.Errors[len(j.Errors)-1])
 				}
 
 				return true, nil
