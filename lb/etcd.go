@@ -29,21 +29,21 @@ const (
 )
 
 type etcdBakedLoadBalancer struct {
-	ctx            context.Context
-	cancelFunc     context.CancelFunc
-	logger         *logrus.Entry
-	cli            *clientv3.Client
-	path           string
-	ring           *hashring.HashRing
-	myTarget       string
-	ringLock       *sync.Mutex
-	cache          map[string]bool
-	notifyChan     chan *LbEvent
-	settleTime     time.Duration
-	stopped        bool
-	stoppedMu      *sync.Mutex
-	lbPauseChan    chan string
-	lbSettleChan   chan *LbEvent
+	ctx          context.Context
+	cancelFunc   context.CancelFunc
+	logger       *logrus.Entry
+	cli          *clientv3.Client
+	path         string
+	ring         *hashring.HashRing
+	myTarget     string
+	ringLock     *sync.Mutex
+	cache        map[string]bool
+	notifyChan   chan *LbEvent
+	settleTime   time.Duration
+	stopped      bool
+	stoppedMu    *sync.Mutex
+	lbPauseChan  chan string
+	lbSettleChan chan *LbEvent
 }
 
 type optionalConfig struct {
@@ -171,7 +171,7 @@ func (l *etcdBakedLoadBalancer) Close() {
 }
 
 // should only be called inside of concurrently safe methods
-func (l *etcdBakedLoadBalancer) sendNotification(e *LbEvent){
+func (l *etcdBakedLoadBalancer) sendNotification(e *LbEvent) {
 	select {
 	case l.notifyChan <- e:
 		l.logger.Debugln("send notification : ", e)
@@ -205,7 +205,7 @@ func (l *etcdBakedLoadBalancer) registerTarget(target string) error {
 
 	l.ring = l.ring.AddNode(target)
 
-	l.logger.Debugln("registered a new target : ", target, l.cache)
+	l.logger.Info("registered a new target : ", target, l.cache)
 	return nil
 }
 
@@ -221,7 +221,7 @@ func (l *etcdBakedLoadBalancer) removeTarget(target string) error {
 	delete(l.cache, target)
 	l.ring = l.ring.RemoveNode(target)
 
-	l.logger.Debugln("removed a target : ", target, l.cache)
+	l.logger.Info("removed a target : ", target, l.cache)
 	return nil
 }
 
@@ -372,7 +372,7 @@ func (l *etcdBakedLoadBalancer) monitorLbPause() {
 			}
 
 			// send the event
-			if e.Target != l.myTarget{
+			if e.Target != l.myTarget {
 				l.sendNotification(e)
 			}
 
