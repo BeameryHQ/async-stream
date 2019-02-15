@@ -38,13 +38,12 @@ type etcdBakedLoadBalancer struct {
 	myTarget       string
 	ringLock       *sync.Mutex
 	cache          map[string]bool
-	lastRingUpdate time.Time
 	notifyChan     chan *LbEvent
 	settleTime     time.Duration
 	stopped        bool
 	stoppedMu      *sync.Mutex
 	lbPauseChan    chan string
-	lbSettleChan   chan time.Time
+	lbSettleChan   chan *LbEvent
 }
 
 type optionalConfig struct {
@@ -115,7 +114,7 @@ func NewEtcdLoadBalancer(ctx context.Context, cli *clientv3.Client, path string,
 		settleTime:   config.settleTime,
 		stoppedMu:    &sync.Mutex{},
 		lbPauseChan:  make(chan string, 100),
-		lbSettleChan: make(chan time.Time, 100),
+		lbSettleChan: make(chan *LbEvent, 100),
 	}
 
 	go l.monitorLbPause()
@@ -172,31 +171,13 @@ func (l *etcdBakedLoadBalancer) Close() {
 }
 
 // should only be called inside of concurrently safe methods
-func (l *etcdBakedLoadBalancer) sendNotification(e *LbEvent) error {
-	now := time.Now().UTC()
-
-	sendToChan := func(e *LbEvent) {
-		select {
-		case l.notifyChan <- e:
-			l.logger.Debugln("send notification : ", e)
-		default:
-			return
-		}
+func (l *etcdBakedLoadBalancer) sendNotification(e *LbEvent){
+	select {
+	case l.notifyChan <- e:
+		l.logger.Debugln("send notification : ", e)
+	default:
+		return
 	}
-
-	lastUpdate := l.lastRingUpdate
-	if lastUpdate.Add(l.settleTime).After(now) {
-		runIn := lastUpdate.Add(l.settleTime).Sub(now)
-		go func() {
-			l.logger.Debugln("going to send notification in : ", runIn)
-			<-time.After(runIn)
-			sendToChan(e)
-		}()
-	} else {
-		sendToChan(e)
-	}
-
-	return nil
 }
 
 func (l *etcdBakedLoadBalancer) getNodeSafe(key string) (string, error) {
@@ -211,23 +192,11 @@ func (l *etcdBakedLoadBalancer) getNodeSafe(key string) (string, error) {
 	return target, nil
 }
 
-func (l *etcdBakedLoadBalancer) getLastUpdated() time.Time {
+func (l *etcdBakedLoadBalancer) registerTarget(target string) error {
 	l.ringLock.Lock()
 	defer l.ringLock.Unlock()
 
-	return l.lastRingUpdate
-}
-
-func (l *etcdBakedLoadBalancer) registerTarget(target string, skipNotification bool) error {
-	l.ringLock.Lock()
-	defer l.ringLock.Unlock()
-
-	l.setPauseSettle()
-	if target == l.myTarget {
-		l.clearPause()
-		skipNotification = true
-	}
-
+	l.setPauseSettle(NewAddedEvent(target))
 	if l.cache[target] {
 		return nil
 	}
@@ -235,17 +204,8 @@ func (l *etcdBakedLoadBalancer) registerTarget(target string, skipNotification b
 	l.cache[target] = true
 
 	l.ring = l.ring.AddNode(target)
-	l.lastRingUpdate = time.Now().UTC()
-
-	if !skipNotification {
-		_ = l.sendNotification(&LbEvent{
-			Event:  TargetAdded,
-			Target: target,
-		})
-	}
 
 	l.logger.Debugln("registered a new target : ", target, l.cache)
-
 	return nil
 }
 
@@ -253,23 +213,13 @@ func (l *etcdBakedLoadBalancer) removeTarget(target string) error {
 	l.ringLock.Lock()
 	defer l.ringLock.Unlock()
 
-	l.setPauseSettle()
-	skipNotification := false
+	l.setPauseSettle(NewRemovedEvent(target))
 	if target == l.myTarget {
-		l.clearPause()
-		skipNotification = true
+		return nil
 	}
 
 	delete(l.cache, target)
 	l.ring = l.ring.RemoveNode(target)
-	l.lastRingUpdate = time.Now().UTC()
-
-	if !skipNotification {
-		_ = l.sendNotification(&LbEvent{
-			Event:  TargetRemoved,
-			Target: target,
-		})
-	}
 
 	l.logger.Debugln("removed a target : ", target, l.cache)
 	return nil
@@ -315,7 +265,6 @@ func (l *etcdBakedLoadBalancer) addTargetRemote(ctx context.Context, target stri
 		}
 	}()
 
-	l.lastRingUpdate = time.Now().UTC()
 	return nil
 }
 
@@ -357,7 +306,7 @@ func (l *etcdBakedLoadBalancer) keyHandler(event *stream.FlowEvent) error {
 		return err
 	}
 
-	return l.registerTarget(target, true)
+	return l.registerTarget(target)
 }
 
 func (l *etcdBakedLoadBalancer) watchHandler(event *stream.FlowEvent) error {
@@ -367,7 +316,7 @@ func (l *etcdBakedLoadBalancer) watchHandler(event *stream.FlowEvent) error {
 	}
 
 	if event.IsCreated() || event.IsUpdated() {
-		return l.registerTarget(target, false)
+		return l.registerTarget(target)
 	}
 
 	return l.removeTarget(target)
@@ -400,35 +349,48 @@ func (l *etcdBakedLoadBalancer) clearPause() {
 	l.lbPauseChan <- unpauseCmd
 }
 
-func (l *etcdBakedLoadBalancer) setPauseSettle() {
+func (l *etcdBakedLoadBalancer) setPauseSettle(event *LbEvent) {
 	l.setStop(true)
-	l.lbSettleChan <- time.Now().UTC()
+	l.lbSettleChan <- event
 }
 
 func (l *etcdBakedLoadBalancer) monitorLbPause() {
 	stopped := l.stopped
 	changed := false
+	paused := false
 	for {
 		select {
-		case t := <-l.lbSettleChan:
+		case e := <-l.lbSettleChan:
 			changed = true
 			stopped = true
 			now := time.Now().UTC()
-			lastUpdate := t
+			lastUpdate := e.CreatedOn
 			if lastUpdate.Add(l.settleTime).After(now) {
 				runIn := lastUpdate.Add(l.settleTime).Sub(now)
 				l.logger.Debug("waiting for settle time : ", runIn)
 				time.Sleep(runIn)
 			}
-			stopped = false
+
+			// send the event
+			if e.Target != l.myTarget{
+				l.sendNotification(e)
+			}
+
+			if !paused {
+				stopped = false
+			}
 		case cmd := <-l.lbPauseChan:
 			changed = true
 			if cmd == pauseCmd {
 				stopped = true
+				paused = true
 			} else {
 				stopped = false
+				paused = false
 			}
 		case <-l.ctx.Done():
+			changed = true
+			stopped = true
 			l.logger.Debug("exiting the lb pause monitor")
 			return
 		case <-time.After(time.Second * 3):

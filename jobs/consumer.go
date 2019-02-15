@@ -46,6 +46,7 @@ type streamConsumer struct {
 	retryTime       time.Duration
 	runningNoUpdate time.Duration
 	concurrency     int
+	cancel          context.CancelFunc
 }
 
 func NewEtcdStreamConsumer(ctx context.Context, cli *clientv3.Client, config *StreamConsumerConfiguration) (*streamConsumer, error) {
@@ -70,6 +71,8 @@ func NewStreamConsumer(ctx context.Context, config *StreamConsumerConfiguration,
 		"path":         config.Path,
 	})
 
+	ctx, cancel := context.WithCancel(ctx)
+
 	return &streamConsumer{
 		logger:          logger,
 		path:            config.Path,
@@ -85,6 +88,7 @@ func NewStreamConsumer(ctx context.Context, config *StreamConsumerConfiguration,
 		retryTime:       config.NextRetry,
 		runningNoUpdate: config.RunningNoUpdate,
 		concurrency:     config.Concurrency,
+		cancel:          cancel,
 	}
 }
 
@@ -196,6 +200,10 @@ func (s *streamConsumer) requeueJobsOnLbChange() {
 func (s *streamConsumer) isJobMine(jobId string) bool {
 	target, err := s.jobFilter.Target(jobId, true)
 	if err != nil {
+		if err == lb.DownErr {
+			s.logger.Errorf("seems the lb is down have to exit")
+			s.cancel()
+		}
 		return false
 	}
 
