@@ -355,9 +355,7 @@ func (l *etcdBakedLoadBalancer) setPauseSettle(event *LbEvent) {
 }
 
 func (l *etcdBakedLoadBalancer) monitorLbPause() {
-	stopped := l.stopped
-	changed := false
-	paused := false
+	var stopped, changed, paused bool
 	for {
 		select {
 		case e := <-l.lbSettleChan:
