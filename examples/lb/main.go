@@ -33,7 +33,7 @@ func main() {
 		for ; ; {
 			select {
 			case e := <-ch:
-				fmt.Println("received a new lb event : ", e)
+				fmt.Println("main received a new lb event : ", e)
 			}
 		}
 	}()
@@ -43,7 +43,7 @@ func main() {
 		jobId := uuid.NewV4().String()
 		target, err := etcdLb.Target(jobId, true)
 		if err != nil {
-			log.Fatalf("getting target faield : %v", err)
+			log.Fatalf("getting target failed : %v", err)
 		}
 
 		log.Printf("got target : %s", target)
