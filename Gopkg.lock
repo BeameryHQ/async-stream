@@ -74,6 +74,14 @@
   version = "v1.0.1"
 
 [[projects]]
+  digest = "1:77b116e940614d08e80805258f116f7d6d28c59ce7b1544de258a8cb76d19eca"
+  name = "github.com/paulbellamy/ratecounter"
+  packages = ["."]
+  pruneopts = ""
+  revision = "524851a93235ac051e3540563ed7909357fe24ab"
+  version = "v0.2.0"
+
+[[projects]]
   digest = "1:7f569d906bdd20d906b606415b7d794f798f91a62fcfb6a4daa6d50690fb7a3f"
   name = "github.com/satori/go.uuid"
   packages = ["."]
@@ -247,6 +255,7 @@
     "github.com/cenkalti/backoff",
     "github.com/coreos/etcd/mvcc/mvccpb",
     "github.com/go-test/deep",
+    "github.com/paulbellamy/ratecounter",
     "github.com/satori/go.uuid",
     "github.com/serialx/hashring",
     "go.etcd.io/etcd/clientv3",

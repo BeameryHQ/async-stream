@@ -3,6 +3,7 @@ package stream
 import (
 	"context"
 	"github.com/BeameryHQ/async-stream/logging"
+	"github.com/BeameryHQ/async-stream/metrics"
 	"github.com/Sirupsen/logrus"
 	"github.com/coreos/etcd/mvcc/mvccpb"
 	"go.etcd.io/etcd/clientv3"
@@ -135,9 +136,14 @@ func (f *EtcdFlow) Run(ctx context.Context) {
 					}
 				case event := <-f.watchBufChans[path]:
 					for _, handler := range handlers {
-						err := handler(flowEventFromEtcd(event))
+						e := flowEventFromEtcd(event)
+						f.incrEventMetrics(e)
+						err := handler(e)
 						if err != nil {
+							metrics.IncrFlowFailed()
 							f.logger.Errorf("handler failed : %v", err)
+						} else {
+							metrics.IncrFlowProcessed()
 						}
 					}
 
@@ -216,11 +222,15 @@ func (f *EtcdFlow) fetchProcessKeys(ctx context.Context, path string, handler Fl
 		currentPath = string(keys[len(keys)-1].Key)
 
 		for _, k := range keys {
-			err := handler(flowEventFromEtcdListKey(k))
+			e := flowEventFromEtcdListKey(k)
+			f.incrEventMetrics(e)
+			err := handler(e)
 			if err != nil {
+				metrics.IncrFlowFailed()
 				f.logger.Printf("skipping key in key handler %s : %v", k, err)
 				continue
 			}
+			metrics.IncrFlowProcessed()
 		}
 
 		firstFetch = false
@@ -228,6 +238,17 @@ func (f *EtcdFlow) fetchProcessKeys(ctx context.Context, path string, handler Fl
 	}
 
 	return nil
+}
+
+func (f *EtcdFlow) incrEventMetrics(e *FlowEvent) {
+	switch e.Type {
+	case FlowEventCreated:
+		metrics.IncrFlowCreated()
+	case FlowEventUpdated:
+		metrics.IncrFlowUpdated()
+	case FlowEventDeleted:
+		metrics.IncrFlowDeleted()
+	}
 }
 
 func flowEventFromEtcd(e *clientv3.Event) *FlowEvent {
