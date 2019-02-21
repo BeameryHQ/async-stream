@@ -170,7 +170,7 @@ func (f *EtcdFlow) Run(ctx context.Context) {
 		for _, h := range hs {
 			f.logger.Debug("starting processing path for list handlers ", p, h)
 			if err := f.fetchProcessKeys(ctx, p, h); err != nil {
-				f.logger.Fatalf("failed processing path with key handler %s : %v", p, err)
+				f.logger.Errorf("failed processing path with key handler %s : %v", p, err)
 			}
 		}
 	}
