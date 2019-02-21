@@ -1,11 +1,11 @@
 package metrics
 
 const (
-	processedKey = "items_processed"
-	failedKey    = "items_failed"
-	createdKey   = "items_created"
-	updatedKey   = "items_updated"
-	deletedKey   = "items_deleted"
+	processedKey = "flow_items_processed"
+	failedKey    = "flow_items_failed"
+	createdKey   = "flow_items_created"
+	updatedKey   = "flow_items_updated"
+	deletedKey   = "flow_items_deleted"
 )
 
 var (

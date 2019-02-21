@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/BeameryHQ/async-stream/metrics"
 	"github.com/coreos/etcd/mvcc/mvccpb"
 	"go.etcd.io/etcd/clientv3"
 	"strings"
@@ -80,7 +81,11 @@ func (js *etcdJobStore) MarkFinished(ctx context.Context, jobId string) error {
 	}
 
 	job.State = StateFinished
-	return js.putJob(ctx, jobKey, job, true)
+	err = js.putJob(ctx, jobKey, job, true)
+	if err == nil {
+		metrics.IncrJobsFinished()
+	}
+	return err
 }
 
 func (js *etcdJobStore) MarkFailed(ctx context.Context, jobId string, jobError error) error {
@@ -102,7 +107,15 @@ func (js *etcdJobStore) MarkFailed(ctx context.Context, jobId string, jobError e
 		job.Errors = []string{}
 	}
 	job.Errors = append(job.Errors, jobError.Error())
-	return js.putJob(ctx, jobKey, job, lease)
+	err = js.putJob(ctx, jobKey, job, lease)
+	if err == nil {
+		if lease {
+			metrics.IncrJobsFailed()
+		} else {
+			metrics.IncrJobsErrored()
+		}
+	}
+	return err
 }
 
 func (js *etcdJobStore) SaveResult(ctx context.Context, jobId string, result interface{}) error {
