@@ -4,6 +4,7 @@ import (
 	"expvar"
 	"github.com/paulbellamy/ratecounter"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -16,8 +17,9 @@ const (
 )
 
 var counts *expvar.Map
+var once sync.Once
 
-func init() {
+func initMap() {
 	mapName := metricsMapKey
 	prefix := os.Getenv(metricsPrefixEnv)
 	if prefix != "" {
@@ -33,26 +35,27 @@ type simpleMetric struct {
 	prefix string
 }
 
-func newSimpleMetric(prefix string) *simpleMetric {
-	return &simpleMetric{
+func newSimpleMetricWithMap(prefix string, m *expvar.Map) *simpleMetric {
+	s := &simpleMetric{
 		prefix: prefix,
 		perSec: ratecounter.NewRateCounter(time.Second),
 		perMin: ratecounter.NewRateCounter(time.Minute),
 	}
+
+	m.Set(s.prefix+metricsPerSec, s.perSec)
+	m.Set(s.prefix+metricsPerMin, s.perMin)
+	return s
+}
+
+func newSimpleMetric(prefix string) *simpleMetric {
+	once.Do(func() {
+		initMap()
+	})
+	return newSimpleMetricWithMap(prefix, counts)
 }
 
 func (s *simpleMetric) Incr() {
 	s.perSec.Incr(1)
-	current := s.perSec.Rate()
-	counts.Add(s.prefix+metricsCount, 1)
-
-	gaugeSec := new(expvar.Int)
-	gaugeSec.Set(current)
-	counts.Set(s.prefix+metricsPerSec, gaugeSec)
-
 	s.perMin.Incr(1)
-	currentMin := s.perMin.Rate()
-	gaugeMin := new(expvar.Int)
-	gaugeMin.Set(currentMin)
-	counts.Set(s.prefix+metricsPerMin, gaugeMin)
+	counts.Add(s.prefix+metricsCount, 1)
 }

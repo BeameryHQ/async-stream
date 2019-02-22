@@ -52,7 +52,7 @@ func main() {
 	config := &jobs.StreamConsumerConfiguration{
 		Path:         path,
 		ConsumerName: consumerName,
-		Concurrency:  10,
+		Concurrency:  20,
 	}
 
 	c, err := jobs.NewEtcdStreamConsumer(
