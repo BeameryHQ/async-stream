@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	metricsMapKey    = "metrics"
+	metricsMapKey    = "async.metrics"
 	metricsPrefixEnv = "METRICS_PREFIX"
 	metricsPerSec    = "_per_sec"
 	metricsPerMin    = "_per_min"
