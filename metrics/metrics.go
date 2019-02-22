@@ -28,10 +28,10 @@ func initPrefix() {
 }
 
 type simpleMetric struct {
-	perSec  *ratecounter.RateCounter
-	perMin  *ratecounter.RateCounter
-	counter *expvar.Int
-	prefix  string
+	rate       *ratecounter.RateCounter
+	counter    *expvar.Int
+	perSecRate *expvar.Int
+	prefix     string
 }
 
 func newSimpleMetric(prefix string) *simpleMetric {
@@ -39,20 +39,25 @@ func newSimpleMetric(prefix string) *simpleMetric {
 		initPrefix()
 	})
 	s := &simpleMetric{
-		prefix:  prefix,
-		perSec:  ratecounter.NewRateCounter(time.Second),
-		perMin:  ratecounter.NewRateCounter(time.Minute),
-		counter: expvar.NewInt(prefixName + prefix + metricsCount),
+		prefix:     prefix,
+		rate:       ratecounter.NewRateCounter(time.Minute * 1),
+		counter:    expvar.NewInt(prefixName + prefix + metricsCount),
+		perSecRate: expvar.NewInt(prefixName + prefix + metricsPerSec),
 	}
 
-	expvar.Publish(prefixName+s.prefix+metricsPerSec, s.perSec)
-	expvar.Publish(prefixName+s.prefix+metricsPerMin, s.perMin)
+	expvar.Publish(prefixName+s.prefix+metricsPerMin, s.rate)
+
+	go func() {
+		ticker := time.NewTicker(time.Second * 5).C
+		for range ticker {
+			s.perSecRate.Set(s.rate.Rate() / 60)
+		}
+	}()
 
 	return s
 }
 
 func (s *simpleMetric) Incr() {
-	s.perSec.Incr(1)
-	s.perMin.Incr(1)
+	s.rate.Incr(1)
 	s.counter.Add(1)
 }

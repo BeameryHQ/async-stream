@@ -137,7 +137,7 @@ func (f *EtcdFlow) Run(ctx context.Context) {
 				case event := <-f.watchBufChans[path]:
 					for _, handler := range handlers {
 						e := flowEventFromEtcd(event)
-						f.incrEventMetrics(e)
+						f.incrEventMetrics(e, true)
 						err := handler(e)
 						if err != nil {
 							metrics.IncrFlowFailed()
@@ -223,7 +223,7 @@ func (f *EtcdFlow) fetchProcessKeys(ctx context.Context, path string, handler Fl
 
 		for _, k := range keys {
 			e := flowEventFromEtcdListKey(k)
-			f.incrEventMetrics(e)
+			f.incrEventMetrics(e, false)
 			err := handler(e)
 			if err != nil {
 				metrics.IncrFlowFailed()
@@ -240,10 +240,14 @@ func (f *EtcdFlow) fetchProcessKeys(ctx context.Context, path string, handler Fl
 	return nil
 }
 
-func (f *EtcdFlow) incrEventMetrics(e *FlowEvent) {
+func (f *EtcdFlow) incrEventMetrics(e *FlowEvent, watch bool) {
 	switch e.Type {
 	case FlowEventCreated:
-		metrics.IncrFlowCreated()
+		if !watch {
+			metrics.IncrFlowCreatedList()
+		} else {
+			metrics.IncrFlowCreatedWatch()
+		}
 	case FlowEventUpdated:
 		metrics.IncrFlowUpdated()
 	case FlowEventDeleted:
