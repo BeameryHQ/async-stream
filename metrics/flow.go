@@ -9,20 +9,12 @@ const (
 )
 
 var (
-	flowProcessed *simpleMetric
-	flowFailed    *simpleMetric
-	flowCreated   *simpleMetric
-	flowUpdated   *simpleMetric
-	flowDeleted   *simpleMetric
-)
-
-func init() {
 	flowProcessed = newSimpleMetric(processedKey)
-	flowFailed = newSimpleMetric(failedKey)
-	flowCreated = newSimpleMetric(createdKey)
-	flowUpdated = newSimpleMetric(updatedKey)
-	flowDeleted = newSimpleMetric(deletedKey)
-}
+	flowFailed    = newSimpleMetric(failedKey)
+	flowCreated   = newSimpleMetric(createdKey)
+	flowUpdated   = newSimpleMetric(updatedKey)
+	flowDeleted   = newSimpleMetric(deletedKey)
+)
 
 func IncrFlowProcessed() {
 	flowProcessed.Incr()

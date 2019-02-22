@@ -16,10 +16,13 @@ const (
 )
 
 var (
-	jobsFinished   = newSimpleMetric(jobsFinishedKey)
-	jobsErrored    = newSimpleMetric(jobsErroredKey)
-	jobsFailed     = newSimpleMetric(jobsFailedKey)
-	jobsRunningAvg = ratecounter.NewAvgRateCounter(60 * time.Second)
+	jobsFinished      = newSimpleMetric(jobsFinishedKey)
+	jobsErrored       = newSimpleMetric(jobsErroredKey)
+	jobsFailed        = newSimpleMetric(jobsFailedKey)
+	jobsRunningAvg    = ratecounter.NewAvgRateCounter(60 * time.Second)
+	jobsRunningCount  = expvar.NewInt(prefixName + jobsRunningCountKey)
+	jobsRunningAvgMs  = expvar.NewFloat(prefixName + jobsRunningAvgMsKey)
+	jobsRunningAvgSec = expvar.NewFloat(prefixName + jobsRunningAvgSecKey)
 )
 
 func IncrJobsFinished() {
@@ -39,8 +42,8 @@ func IncrJobsRunningElapsed(cb func()) {
 	startTime := time.Now()
 	// Execute heavy operation.
 
-	counts.Add(jobsRunningCountKey, 1)
-	defer counts.Add(jobsRunningCountKey, -1)
+	jobsRunningCount.Add(1)
+	defer jobsRunningCount.Add(-1)
 	cb()
 
 	// Record elapsed time.
@@ -48,13 +51,6 @@ func IncrJobsRunningElapsed(cb func()) {
 	// Get the currentMs average execution time.
 	avg := jobsRunningAvg.Rate()
 
-	currentMs := new(expvar.Float)
-	currentMs.Set(avg)
-
-	currentSec := new(expvar.Float)
-	currentSec.Set(avg / 1000)
-
-	counts.Set(jobsRunningAvgMsKey, currentMs)
-	counts.Set(jobsRunningAvgSecKey, currentSec)
-
+	jobsRunningAvgMs.Set(avg)
+	jobsRunningAvgSec.Set(avg / 1000)
 }

@@ -9,53 +9,50 @@ import (
 )
 
 const (
-	metricsMapKey    = "async.metrics"
+	metricsMapKey    = "async.metrics."
 	metricsPrefixEnv = "METRICS_PREFIX"
 	metricsPerSec    = "_per_sec"
 	metricsPerMin    = "_per_min"
 	metricsCount     = "_count"
 )
 
-var counts *expvar.Map
 var once sync.Once
+var prefixName string
 
-func initMap() {
-	mapName := metricsMapKey
+func initPrefix() {
+	prefixName = metricsMapKey
 	prefix := os.Getenv(metricsPrefixEnv)
 	if prefix != "" {
-		mapName = prefix + "." + mapName
+		prefixName = prefix + "." + prefixName
 	}
-
-	counts = expvar.NewMap(mapName)
 }
 
 type simpleMetric struct {
-	perSec *ratecounter.RateCounter
-	perMin *ratecounter.RateCounter
-	prefix string
-}
-
-func newSimpleMetricWithMap(prefix string, m *expvar.Map) *simpleMetric {
-	s := &simpleMetric{
-		prefix: prefix,
-		perSec: ratecounter.NewRateCounter(time.Second),
-		perMin: ratecounter.NewRateCounter(time.Minute),
-	}
-
-	m.Set(s.prefix+metricsPerSec, s.perSec)
-	m.Set(s.prefix+metricsPerMin, s.perMin)
-	return s
+	perSec  *ratecounter.RateCounter
+	perMin  *ratecounter.RateCounter
+	counter *expvar.Int
+	prefix  string
 }
 
 func newSimpleMetric(prefix string) *simpleMetric {
 	once.Do(func() {
-		initMap()
+		initPrefix()
 	})
-	return newSimpleMetricWithMap(prefix, counts)
+	s := &simpleMetric{
+		prefix:  prefix,
+		perSec:  ratecounter.NewRateCounter(time.Second),
+		perMin:  ratecounter.NewRateCounter(time.Minute),
+		counter: expvar.NewInt(prefixName + prefix + metricsCount),
+	}
+
+	expvar.Publish(prefixName+s.prefix+metricsPerSec, s.perSec)
+	expvar.Publish(prefixName+s.prefix+metricsPerMin, s.perMin)
+
+	return s
 }
 
 func (s *simpleMetric) Incr() {
 	s.perSec.Incr(1)
 	s.perMin.Incr(1)
-	counts.Add(s.prefix+metricsCount, 1)
+	s.counter.Add(1)
 }

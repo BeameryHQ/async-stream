@@ -6,14 +6,14 @@ const (
 	consumersOnline = "consumers_online"
 )
 
+var (
+	consumersOnlineGauge = expvar.NewInt(prefixName + consumersOnline)
+)
+
 func SetOnline() {
-	val := new(expvar.Int)
-	val.Set(1)
-	counts.Set(consumersOnline, val)
+	consumersOnlineGauge.Set(1)
 }
 
 func SetOffline() {
-	val := new(expvar.Int)
-	val.Set(0)
-	counts.Set(consumersOnline, val)
+	consumersOnlineGauge.Set(0)
 }
