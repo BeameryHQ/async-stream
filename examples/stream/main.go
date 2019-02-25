@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"github.com/BeameryHQ/async-stream/stream"
 	"log"
@@ -11,7 +12,15 @@ import (
 	"go.etcd.io/etcd/clientv3"
 )
 
+var flowPath = flag.String("path", "", "the main etcd processing path")
+
 func main() {
+	flag.Parse()
+
+	if *flowPath == "" {
+		log.Fatalf("path is required parameter")
+	}
+
 	debugPort := "9090"
 	go func() {
 		if err := http.ListenAndServe(fmt.Sprintf(":%s", debugPort), nil); err != nil {
@@ -32,7 +41,7 @@ func main() {
 	watchItems := 0
 
 	f := stream.NewEtcdFlow(cli)
-	f.RegisterListHandler("/types/beamery/application", func(event *stream.FlowEvent) error {
+	f.RegisterListHandler(*flowPath, func(event *stream.FlowEvent) error {
 		fmt.Println("got a key from key handler : ", event.Kv.Key)
 		listItems++
 		if listItems%30 == 0 {
@@ -40,7 +49,7 @@ func main() {
 		}
 		return nil
 	})
-	f.RegisterWatchHandler("/types/beamery/application", func(event *stream.FlowEvent) error {
+	f.RegisterWatchHandler(*flowPath, func(event *stream.FlowEvent) error {
 		fmt.Println("got a key from watch handler : ", event.Kv.Key)
 		watchItems++
 		if watchItems%30 == 0 {
