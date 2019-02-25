@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/BeameryHQ/async-stream/logging"
+	"github.com/BeameryHQ/async-stream/metrics"
 	"github.com/BeameryHQ/async-stream/stream"
 	"github.com/Sirupsen/logrus"
 	"github.com/serialx/hashring"
@@ -131,6 +132,7 @@ func NewEtcdLoadBalancer(ctx context.Context, cli *clientv3.Client, path string,
 		f.Run(l.ctx)
 	}()
 
+	metrics.SetOnline()
 	return l, nil
 }
 
@@ -337,6 +339,12 @@ func (l *etcdBakedLoadBalancer) isStopped() (bool, error) {
 func (l *etcdBakedLoadBalancer) setStop(val bool) {
 	l.stoppedMu.Lock()
 	defer l.stoppedMu.Unlock()
+	if val {
+		metrics.SetOffline()
+	} else {
+		metrics.SetOnline()
+	}
+
 	l.stopped = val
 }
 

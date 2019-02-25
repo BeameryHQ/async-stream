@@ -4,8 +4,8 @@ package lb
 
 import (
 	"context"
-	"github.com/satori/go.uuid"
 	"github.com/BeameryHQ/async-stream/tests"
+	"github.com/satori/go.uuid"
 	"os"
 	"sync"
 	"testing"

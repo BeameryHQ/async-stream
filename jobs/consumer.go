@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/BeameryHQ/async-stream/lb"
 	"github.com/BeameryHQ/async-stream/logging"
+	"github.com/BeameryHQ/async-stream/metrics"
 	"github.com/BeameryHQ/async-stream/stream"
 	"github.com/Sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
@@ -259,6 +260,7 @@ func (s *streamConsumer) processQueue() {
 
 	defer func() {
 		if rec := recover(); rec != nil {
+
 			err := s.jobStore.MarkFailed(s.ctx, jobId, fmt.Errorf("%s", rec))
 			if err != nil {
 				s.logger.Errorf("couldn't mark the job as failed on panic: %v", err)
@@ -302,7 +304,12 @@ func (s *streamConsumer) processQueue() {
 		"taskName": j.TaskName,
 		"jobId":    j.Id,
 	})
-	err = handler.Handle(s.jobStore, j, handlerLog)
+
+	// run in inside the metrics wrapper so can record how long it's been running
+	metrics.IncrJobsRunningElapsed(func() {
+		err = handler.Handle(s.jobStore, j, handlerLog)
+	})
+
 	if err == nil {
 		s.logger.Debug("the job processed successfully : ", jobId)
 		if err := s.jobStore.MarkFinished(s.ctx, jobId); err != nil {

@@ -41,6 +41,10 @@ func NewJobWithRetry(taskName string, args JobParameters, maxRetry int) (string,
 	return jobId, j
 }
 
+func (j *Job) IsFailed() bool {
+	return j.CurrentRetry >= j.MaxRetry
+}
+
 type JobHandler interface {
 	Handle(jobStore JobStore, j *Job, logger *logrus.Entry) error
 }

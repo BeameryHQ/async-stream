@@ -4,17 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/Sirupsen/logrus"
 	"github.com/BeameryHQ/async-stream/jobs"
+	"github.com/Sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 	"log"
 	"math/rand"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
 )
 
 func main() {
+	debugPort := "9090"
+	go func() {
+		if err := http.ListenAndServe(fmt.Sprintf(":%s", debugPort), nil); err != nil {
+			log.Fatalf("starting the debug server %v ", err)
+		}
+	}()
+
 	rand.Seed(time.Now().UTC().UnixNano())
 
 	consumerPrefix := os.Getenv("CONSUMER_PREFIX")
@@ -44,7 +52,7 @@ func main() {
 	config := &jobs.StreamConsumerConfiguration{
 		Path:         path,
 		ConsumerName: consumerName,
-		Concurrency:  10,
+		Concurrency:  20,
 	}
 
 	c, err := jobs.NewEtcdStreamConsumer(
