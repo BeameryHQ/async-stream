@@ -5,6 +5,7 @@ package lb
 import (
 	"context"
 	"github.com/BeameryHQ/async-stream/tests"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/satori/go.uuid"
 	"os"
 	"sync"
@@ -27,7 +28,7 @@ func TestEtcdBakedLoadBalancer_Target(t *testing.T) {
 		res.Cli,
 		path,
 		currentTarget,
-		WithSetleTime(time.Second * 1),
+		WithSetleTime(time.Second*1),
 	)
 	if err != nil {
 		t.Fatalf("creating lb failed")
@@ -54,8 +55,6 @@ func TestEtcdBakedLoadBalancer_Target(t *testing.T) {
 }
 
 func TestEtcdBakedLoadBalancer_Notify(t *testing.T) {
-	t.Logf("notify test ")
-
 	server := os.Getenv("ETCD_SERVER")
 	res := tests.NewEtcdResource(t, server)
 	path := res.RegisterRandom()
@@ -72,8 +71,42 @@ func TestEtcdBakedLoadBalancer_Notify(t *testing.T) {
 		WithSetleTime(time.Second*3),
 	)
 	if err != nil {
-		t.Fatalf("creating lb failed")
+		t.Fatalf("creating lb1 failed")
 	}
+
+	lb2, err := NewEtcdLoadBalancer(
+		ctx,
+		res.Cli,
+		path,
+		secondTarget,
+		WithSetleTime(time.Second*1),
+	)
+	if err != nil {
+		t.Fatalf("creating lb2 failed")
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		t.Logf("wait lb1")
+		waitForEvents(t, lb1, []*LbEvent{
+			NewAddedEvent(secondTarget),
+		})
+
+	}()
+
+	go func() {
+		wg.Done()
+		t.Logf("wait lb2")
+		waitForEvents(t, lb2, []*LbEvent{
+			NewAddedEvent(firstTarget),
+		})
+
+	}()
+
+	wg.Wait()
 
 	var keys []string
 	for i := 0; i < 10; i++ {
@@ -83,70 +116,59 @@ func TestEtcdBakedLoadBalancer_Notify(t *testing.T) {
 	for _, k := range keys {
 		target, err := lb1.Target(k, true)
 		if err != nil {
-			t.Fatalf("target failed : %v", err)
+			t.Fatalf("target failed lb1 : %v", err)
 		}
 
-		if target != firstTarget {
-			t.Fatalf("target mismatch expexted %s got %s", firstTarget, target)
-		}
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go func() {
-		wg.Done()
-		e := <- lb1.Notify()
-		if e.Event != TargetAdded{
-			t.Errorf("event type expected : %s got : %s", TargetAdded, e.Event)
+		if target != firstTarget && target != secondTarget {
+			t.Fatalf("target mismatch expected %s, %s got %s", firstTarget, secondTarget, target)
 		}
 
-		if e.Target != secondTarget{
-			t.Errorf("event target expected : %s got : %s", secondTarget, e.Target)
-		}
-	}()
-
-	lb2, err := NewEtcdLoadBalancer(
-		ctx,
-		res.Cli,
-		path,
-		secondTarget,
-		WithSetleTime(time.Second*3),
-	)
-	if err != nil {
-		t.Fatalf("creating lb failed")
-	}
-
-	wg.Wait()
-
-	for _, k := range keys {
-		target, err := lb2.Target(k, true)
+		target, err = lb2.Target(k, true)
 		if err != nil {
-			t.Fatalf("target failed : %v", err)
+			t.Fatalf("target failed lb2 : %v", err)
 		}
 
-		if target != firstTarget && target != secondTarget{
-			t.Fatalf("target mismatch expexted %s, %s got %s", firstTarget, secondTarget, target)
+		if target != firstTarget && target != secondTarget {
+			t.Fatalf("target mismatch expected %s, %s got %s", firstTarget, secondTarget, target)
 		}
 	}
 
+	// if close the second one will should get a removed on lb1
 	lb2.Close()
 
-	var wg2 sync.WaitGroup
-	wg2.Add(1)
+	t.Logf("wait for the lb1.close")
+	waitForEvents(t, lb1, []*LbEvent{
+		NewRemovedEvent(secondTarget),
+	})
 
-	go func() {
-		wg2.Done()
-		e := <- lb1.Notify()
-		if e.Event != TargetRemoved{
-			t.Errorf("event type expected : %s got : %s", TargetRemoved, e.Event)
-		}
-
-		if e.Target != secondTarget{
-			t.Errorf("event target expected : %s got : %s", secondTarget, e.Target)
-		}
-	}()
-
-	wg2.Wait()
+	// also stop the first one and also listen for the
 	lb1.Close()
+	waitForEvents(t, lb1, []*LbEvent{
+		NewLbStoppedEvent(),
+	})
+
+}
+
+func waitForEvents(t *testing.T, l LbNotifier, events []*LbEvent) {
+	notifyEventsChan := l.NotifyBulk()
+	var notifyEvents []*LbEvent
+
+	select {
+	case notifyEvents = <-notifyEventsChan:
+	case <-time.After(time.Second * 10):
+		t.Fatalf("timeout waiting for the events")
+		return
+	}
+
+	if len(events) != len(notifyEvents) {
+		t.Errorf("bulk event failed expected : %d events got %d", len(events), len(notifyEvents))
+		t.Fatalf("expected : %+v got : %+v", spew.Sdump(events), spew.Sdump(notifyEvents))
+	}
+
+	for i, e := range events {
+		notifyEvent := notifyEvents[i]
+		if e.Event != notifyEvent.Event || e.Target != notifyEvent.Target {
+			t.Fatalf("event mismatch expected : %+v, got : %+v", e, notifyEvent)
+		}
+	}
 }

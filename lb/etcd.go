@@ -30,21 +30,22 @@ const (
 )
 
 type etcdBakedLoadBalancer struct {
-	ctx          context.Context
-	cancelFunc   context.CancelFunc
-	logger       *logrus.Entry
-	cli          *clientv3.Client
-	path         string
-	ring         *hashring.HashRing
-	myTarget     string
-	ringLock     *sync.Mutex
-	cache        map[string]bool
-	notifyChan   chan *LbEvent
-	settleTime   time.Duration
-	stopped      bool
-	stoppedMu    *sync.Mutex
-	lbPauseChan  chan string
-	lbSettleChan chan *LbEvent
+	ctx            context.Context
+	cancelFunc     context.CancelFunc
+	logger         *logrus.Entry
+	cli            *clientv3.Client
+	path           string
+	ring           *hashring.HashRing
+	myTarget       string
+	ringLock       *sync.Mutex
+	cache          map[string]bool
+	notifyChan     chan *LbEvent
+	notifyBulkChan chan []*LbEvent
+	settleTime     time.Duration
+	stopped        bool
+	stoppedMu      *sync.Mutex
+	lbPauseChan    chan string
+	lbSettleChan   chan *LbEvent
 }
 
 type optionalConfig struct {
@@ -95,6 +96,7 @@ func NewEtcdLoadBalancer(ctx context.Context, cli *clientv3.Client, path string,
 	path = strings.TrimRight(path, "/") + config.lbSubpath
 
 	notifyChan := make(chan *LbEvent)
+	notifyBulkChan := make(chan []*LbEvent)
 
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithCancel(ctx)
@@ -111,11 +113,12 @@ func NewEtcdLoadBalancer(ctx context.Context, cli *clientv3.Client, path string,
 		cache: map[string]bool{
 			myTarget: true,
 		},
-		notifyChan:   notifyChan,
-		settleTime:   config.settleTime,
-		stoppedMu:    &sync.Mutex{},
-		lbPauseChan:  make(chan string, 100),
-		lbSettleChan: make(chan *LbEvent, 100),
+		notifyChan:     notifyChan,
+		notifyBulkChan: notifyBulkChan,
+		settleTime:     config.settleTime,
+		stoppedMu:      &sync.Mutex{},
+		lbPauseChan:    make(chan string, 100),
+		lbSettleChan:   make(chan *LbEvent, 100),
 	}
 
 	go l.monitorLbPause()
@@ -168,6 +171,10 @@ func (l *etcdBakedLoadBalancer) Notify() <-chan *LbEvent {
 	return l.notifyChan
 }
 
+func (l *etcdBakedLoadBalancer) NotifyBulk() <-chan []*LbEvent {
+	return l.notifyBulkChan
+}
+
 func (l *etcdBakedLoadBalancer) Close() {
 	l.cancelFunc()
 }
@@ -180,6 +187,64 @@ func (l *etcdBakedLoadBalancer) sendNotification(e *LbEvent) {
 	default:
 		return
 	}
+}
+
+func (l *etcdBakedLoadBalancer) sendBulkNotification(events []*LbEvent) {
+	if len(events) == 0 {
+		return
+	}
+	// try to send only what matters
+	var finalEvents []*LbEvent
+
+	send := func() {
+		select {
+		case l.notifyBulkChan <- finalEvents:
+			l.logger.Debugln("send bulk notification : ", finalEvents)
+		default:
+			return
+		}
+	}
+
+	added := []*LbEvent{}
+	addedSet := map[string]bool{}
+
+	removed := []*LbEvent{}
+	removedSet := map[string]bool{}
+
+	for _, e := range events {
+		if e.Event == LbStopped {
+			finalEvents = []*LbEvent{e}
+			send()
+			return
+		}
+
+		if e.Event == TargetAdded {
+			if !addedSet[e.Target] {
+				added = append(added, e)
+				addedSet[e.Target] = true
+			}
+		}
+
+		if e.Event == TargetRemoved {
+			if !removedSet[e.Target] {
+				removed = append(removed, e)
+				removedSet[e.Target] = true
+			}
+		}
+	}
+
+	// there's no need to do anything at this point
+	if len(added) == len(removed) {
+		return
+	}
+
+	if len(added) > len(removed) {
+		finalEvents = added[len(removed):]
+	} else {
+		finalEvents = removed[len(added):]
+	}
+
+	send()
 }
 
 func (l *etcdBakedLoadBalancer) getNodeSafe(key string) (string, error) {
@@ -364,6 +429,7 @@ func (l *etcdBakedLoadBalancer) setPauseSettle(event *LbEvent) {
 
 func (l *etcdBakedLoadBalancer) monitorLbPause() {
 	var stopped, changed, paused bool
+	var lbEvents []*LbEvent
 	for {
 		select {
 		case e := <-l.lbSettleChan:
@@ -380,6 +446,7 @@ func (l *etcdBakedLoadBalancer) monitorLbPause() {
 			// send the event
 			if e.Target != l.myTarget {
 				l.sendNotification(e)
+				lbEvents = append(lbEvents, e)
 			}
 
 			if !paused {
@@ -398,11 +465,17 @@ func (l *etcdBakedLoadBalancer) monitorLbPause() {
 			changed = true
 			stopped = true
 			l.logger.Debug("exiting the lb pause monitor")
+			lbEvents = append(lbEvents, NewLbStoppedEvent())
+			l.sendBulkNotification(lbEvents)
 			return
+
 		case <-time.After(time.Second * 3):
 			if changed {
 				l.logger.Debug("setting pause to ", stopped)
 				l.setStop(stopped)
+				l.logger.Debugf("sending exit event %+v", lbEvents)
+				l.sendBulkNotification(lbEvents)
+				lbEvents = []*LbEvent{}
 			}
 			changed = false
 		}

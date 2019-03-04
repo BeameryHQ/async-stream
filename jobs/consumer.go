@@ -116,12 +116,23 @@ func (s *streamConsumer) Start(block bool) {
 	}()
 
 	go func() {
-		ch := s.jobFilter.Notify()
+		ch := s.jobFilter.NotifyBulk()
 		for {
 			select {
-			case <-ch:
-				s.logger.Info("lb change need to re-shuffle")
-				s.requeueJobsOnLbChange()
+			case events := <-ch:
+				for _, e := range events {
+					if e.Target == lb.LbStopped {
+						s.logger.Debugf("got lb shutdown message going to trigger exit")
+						s.cancel()
+						return
+					}
+
+					if e.Event == lb.TargetRemoved {
+						s.logger.Info("lb change need to re-shuffle")
+						s.requeueJobsOnLbChange()
+						break
+					}
+				}
 			case <-s.ctx.Done():
 				return
 			}
