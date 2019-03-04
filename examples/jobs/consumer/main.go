@@ -16,7 +16,12 @@ import (
 )
 
 func main() {
-	debugPort := "9090"
+
+	debugPort := os.Getenv("DEBUG_PORT")
+	if debugPort == "" {
+		debugPort = "9090"
+	}
+
 	go func() {
 		if err := http.ListenAndServe(fmt.Sprintf(":%s", debugPort), nil); err != nil {
 			log.Fatalf("starting the debug server %v ", err)

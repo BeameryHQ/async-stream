@@ -10,6 +10,7 @@ type KeyLoadBalancer interface {
 const (
 	TargetAdded   = "Added"
 	TargetRemoved = "Removed"
+	LbStopped     = "LbStopped"
 )
 
 type LbEvent struct {
@@ -34,8 +35,16 @@ func NewRemovedEvent(target string) *LbEvent {
 	}
 }
 
+func NewLbStoppedEvent() *LbEvent {
+	return &LbEvent{
+		CreatedOn: time.Now().UTC(),
+		Event:     LbStopped,
+	}
+}
+
 type LbNotifier interface {
 	Notify() <-chan *LbEvent
+	NotifyBulk() <-chan []*LbEvent
 }
 
 type KeyLbNotifier interface {
