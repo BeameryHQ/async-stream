@@ -473,7 +473,6 @@ func (l *etcdBakedLoadBalancer) monitorLbPause() {
 			if changed {
 				l.logger.Debug("setting pause to ", stopped)
 				l.setStop(stopped)
-				l.logger.Debugf("sending exit event %+v", lbEvents)
 				l.sendBulkNotification(lbEvents)
 				lbEvents = []*LbEvent{}
 			}

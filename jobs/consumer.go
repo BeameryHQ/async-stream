@@ -241,7 +241,7 @@ func (s *streamConsumer) streamHandler(event *stream.FlowEvent) error {
 	s.mu.Unlock()
 
 	if !s.isJobMine(jobId) {
-		s.logger.Debugln("this job is not mine skipping ", jobId, s.consumerID)
+		//s.logger.Debugln("this job is not mine skipping ", jobId, s.consumerID)
 		return nil
 	}
 
