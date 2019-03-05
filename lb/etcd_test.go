@@ -136,13 +136,14 @@ func TestEtcdBakedLoadBalancer_Notify(t *testing.T) {
 	// if close the second one will should get a removed on lb1
 	lb2.Close()
 
-	t.Logf("wait for the lb1.close")
+	t.Logf("wait for the lb2 removed")
 	waitForEvents(t, lb1, []*LbEvent{
 		NewRemovedEvent(secondTarget),
 	})
 
 	// also stop the first one and also listen for the
 	lb1.Close()
+	t.Logf("wait for the lb1.close")
 	waitForEvents(t, lb1, []*LbEvent{
 		NewLbStoppedEvent(),
 	})
@@ -154,7 +155,17 @@ func waitForEvents(t *testing.T, l LbNotifier, events []*LbEvent) {
 	var notifyEvents []*LbEvent
 
 	select {
-	case notifyEvents = <-notifyEventsChan:
+	case nevents, ok := <-notifyEventsChan:
+		notifyEvents = nevents
+		if !ok {
+			for _, e := range events {
+				if e.Event == LbStopped {
+					return
+				}
+			}
+			t.Fatalf("the channel was closed")
+		}
+
 	case <-time.After(time.Second * 10):
 		t.Fatalf("timeout waiting for the events")
 		return

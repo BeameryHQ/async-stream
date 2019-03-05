@@ -116,14 +116,18 @@ func (s *streamConsumer) Start(block bool) {
 	}()
 
 	go func() {
+		defer s.cancel()
 		ch := s.jobFilter.NotifyBulk()
 		for {
 			select {
-			case events := <-ch:
+			case events, ok  := <-ch:
+				if !ok {
+					s.logger.Info("lb channel is closed exiting")
+					return
+				}
 				for _, e := range events {
 					if e.Target == lb.LbStopped {
-						s.logger.Debugf("got lb shutdown message going to trigger exit")
-						s.cancel()
+						s.logger.Info("got lb shutdown message going to trigger exit")
 						return
 					}
 

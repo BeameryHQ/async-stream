@@ -62,9 +62,43 @@ func (sh *alwaysPanicHandler) Handle(jobStore JobStore, j *Job, logger *logrus.E
 	panic("panic")
 }
 
-func TestEtcdJobStore_Run(t *testing.T) {
-	t.Logf("testing a successful case")
+func TestStreamConsumer_StartLbStop(t *testing.T) {
+	server := os.Getenv("ETCD_SERVER")
+	res := tests.NewEtcdResource(t, server)
+	path := res.RegisterRandom()
+	defer res.Cleanup()
 
+	ctx := context.Background()
+	consumerName := "consumer-0"
+
+	conf := &StreamConsumerConfiguration{
+		Path:            path,
+		ConsumerName:    consumerName,
+		NextRetry:       time.Second,
+		RunningNoUpdate: time.Second * 5,
+	}
+	consumer, err := NewEtcdStreamConsumer(ctx, res.Cli, conf)
+	if err != nil {
+		t.Fatalf("creating the consumer")
+	}
+
+	taskNameAlwaysPanic := "test.alwaysPanic"
+	consumer.RegisterHandler(taskNameAlwaysPanic, &alwaysPanicHandler{})
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		consumer.Start(true)
+	}()
+
+	consumer.jobFilter.Close()
+	wg.Wait()
+
+}
+
+func TestEtcdJobStore_Run(t *testing.T) {
 	server := os.Getenv("ETCD_SERVER")
 	res := tests.NewEtcdResource(t, server)
 	path := res.RegisterRandom()
