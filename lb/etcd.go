@@ -176,6 +176,7 @@ func (l *etcdBakedLoadBalancer) NotifyBulk() <-chan []*LbEvent {
 }
 
 func (l *etcdBakedLoadBalancer) Close() {
+	l.logger.Debug("closing the lb by calling Close")
 	l.cancelFunc()
 }
 
@@ -189,6 +190,8 @@ func (l *etcdBakedLoadBalancer) sendNotification(e *LbEvent) {
 	}
 }
 
+// sendBulkNotification is clever version of sendNotification where one addition of lb cancels out one removal
+// also if there's one stopped event the others are discarded and are sent in bulk to downstream
 func (l *etcdBakedLoadBalancer) sendBulkNotification(events []*LbEvent) {
 	if len(events) == 0 {
 		return
@@ -464,9 +467,14 @@ func (l *etcdBakedLoadBalancer) monitorLbPause() {
 		case <-l.ctx.Done():
 			changed = true
 			stopped = true
-			l.logger.Debug("exiting the lb pause monitor")
+			l.logger.Info("exiting the lb pause monitor")
 			lbEvents = append(lbEvents, NewLbStoppedEvent())
 			l.sendBulkNotification(lbEvents)
+
+			//close the chan so downstream can react on that if missed the message
+			close(l.notifyChan)
+			close(l.notifyBulkChan)
+
 			return
 
 		case <-time.After(time.Second * 3):
