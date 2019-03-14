@@ -3,12 +3,11 @@ package jobs
 import (
 	"context"
 	"fmt"
-	"github.com/BeameryHQ/async-stream/lb"
 	"github.com/BeameryHQ/async-stream/logging"
 	"github.com/BeameryHQ/async-stream/metrics"
 	"github.com/BeameryHQ/async-stream/stream"
+	"github.com/BeameryHQ/async-stream/stream/horizontal"
 	"github.com/Sirupsen/logrus"
-	"go.etcd.io/etcd/clientv3"
 	"k8s.io/client-go/util/workqueue"
 	"math"
 	"regexp"
@@ -33,38 +32,24 @@ type StreamConsumerConfiguration struct {
 }
 
 type streamConsumer struct {
-	logger          *logrus.Entry
-	path            string
-	consumerID      string
-	queue           workqueue.RateLimitingInterface
-	taskHandlers    map[string]JobHandler
-	jobStore        JobStore
-	ctx             context.Context
-	jobFilter       lb.KeyLbNotifier
-	streamCache     map[string]bool
-	mu              *sync.Mutex
-	flow            stream.Flow
+	logger       *logrus.Entry
+	path         string
+	consumerID   string
+	queue        workqueue.RateLimitingInterface
+	taskHandlers map[string]JobHandler
+	jobStore     JobStore
+	ctx          context.Context
+	streamCache  map[string]bool
+	mu           *sync.Mutex
+	flow         horizontal.HorizontalFlow
+
 	retryTime       time.Duration
 	runningNoUpdate time.Duration
 	concurrency     int
 	cancel          context.CancelFunc
 }
 
-func NewEtcdStreamConsumer(ctx context.Context, cli *clientv3.Client, config *StreamConsumerConfiguration) (*streamConsumer, error) {
-	applyDefaults(config)
-
-	jobFilter, err := lb.NewEtcdLoadBalancer(ctx, cli, config.Path, config.ConsumerName)
-	if err != nil {
-		return nil, err
-	}
-
-	jobStore := NewJobStore(cli, config.Path, config.ConsumerName, config.RunningNoUpdate)
-	flow := stream.NewEtcdFlow(cli)
-
-	return NewStreamConsumer(ctx, config, jobStore, flow, jobFilter), nil
-}
-
-func NewStreamConsumer(ctx context.Context, config *StreamConsumerConfiguration, jobStore JobStore, flow stream.Flow, jobFilter lb.KeyLbNotifier) *streamConsumer {
+func NewStreamConsumer(ctx context.Context, config *StreamConsumerConfiguration, jobStore JobStore, flow horizontal.HorizontalFlow) *streamConsumer {
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 
 	logger := logging.GetLogger().WithFields(logrus.Fields{
@@ -82,7 +67,6 @@ func NewStreamConsumer(ctx context.Context, config *StreamConsumerConfiguration,
 		taskHandlers:    map[string]JobHandler{},
 		jobStore:        jobStore,
 		ctx:             ctx,
-		jobFilter:       jobFilter,
 		streamCache:     map[string]bool{},
 		mu:              &sync.Mutex{},
 		flow:            flow,
@@ -109,38 +93,11 @@ func applyDefaults(config *StreamConsumerConfiguration) {
 
 func (s *streamConsumer) Start(block bool) {
 	go func() {
-		s.logger.Info("starting the stream flow ")
-		s.flow.RegisterListHandler(s.path, s.streamHandler)
-		s.flow.RegisterWatchHandler(s.path, s.streamHandler)
-		s.flow.Run(s.ctx)
-	}()
-
-	go func() {
 		defer s.cancel()
-		ch := s.jobFilter.NotifyBulk()
-		for {
-			select {
-			case events, ok  := <-ch:
-				if !ok {
-					s.logger.Info("lb channel is closed exiting")
-					return
-				}
-				for _, e := range events {
-					if e.Target == lb.LbStopped {
-						s.logger.Info("got lb shutdown message going to trigger exit")
-						return
-					}
 
-					if e.Event == lb.TargetRemoved {
-						s.logger.Info("lb change need to re-shuffle")
-						s.requeueJobsOnLbChange()
-						break
-					}
-				}
-			case <-s.ctx.Done():
-				return
-			}
-		}
+		s.logger.Info("starting the stream flow ")
+		s.flow.RegisterHandler(s.streamHandler)
+		_ = s.flow.Run(s.ctx, true)
 	}()
 
 	// this goroutine monitors the workers if they fail so can restart them
@@ -205,26 +162,8 @@ func (s *streamConsumer) requeueJobsOnLbChange() {
 	defer s.mu.Unlock()
 
 	for jobId := range s.streamCache {
-		if !s.isJobMine(jobId) {
-			continue
-		}
-
 		s.queue.Add(jobId)
 	}
-}
-
-func (s *streamConsumer) isJobMine(jobId string) bool {
-	target, err := s.jobFilter.Target(jobId, true)
-	if err != nil {
-		if err == lb.DownErr {
-			s.logger.Errorf("seems the lb is down have to exit")
-			s.cancel()
-		}
-		return false
-	}
-
-	return target == s.consumerID
-
 }
 
 func (s *streamConsumer) streamHandler(event *stream.FlowEvent) error {
@@ -243,11 +182,6 @@ func (s *streamConsumer) streamHandler(event *stream.FlowEvent) error {
 		delete(s.streamCache, jobId)
 	}
 	s.mu.Unlock()
-
-	if !s.isJobMine(jobId) {
-		//s.logger.Debugln("this job is not mine skipping ", jobId, s.consumerID)
-		return nil
-	}
 
 	if event.IsCreated() || event.IsUpdated() {
 		s.queue.Add(jobId)

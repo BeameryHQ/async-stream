@@ -7,7 +7,6 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/coreos/etcd/mvcc/mvccpb"
 	"go.etcd.io/etcd/clientv3"
-
 	"sync"
 )
 
@@ -302,3 +301,6 @@ func flowKeyValueFromEtcd(kv *mvccpb.KeyValue) *FlowKeyValue {
 		Value:          string(kv.Value),
 	}
 }
+
+
+
