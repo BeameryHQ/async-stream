@@ -29,6 +29,7 @@ type StreamConsumerConfiguration struct {
 	// optional defaults to 5ecs
 	NextRetry       time.Duration `yaml:"NextRetry"`
 	RunningNoUpdate time.Duration `yaml:"RunningNoUpdate"`
+	FromEnd         bool          `yaml:"FromEnd"`
 }
 
 type streamConsumer struct {

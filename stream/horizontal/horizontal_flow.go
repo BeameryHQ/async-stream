@@ -24,6 +24,8 @@ var (
 )
 
 type FlowProcessorProvider struct {
+	// if enabled the list handlers won't be registered
+	fromEnd      bool
 	cancel       context.CancelFunc
 	flow         stream.Flow
 	lb           lb.KeyLbNotifier
@@ -44,7 +46,9 @@ func (f *FlowProcessorProvider) Run(ctx context.Context, block bool) error {
 	ctx, cancel := context.WithCancel(ctx)
 	f.cancel = cancel
 
-	f.flow.RegisterListHandler(f.path, f.listHandler)
+	if !f.fromEnd {
+		f.flow.RegisterListHandler(f.path, f.listHandler)
+	}
 	f.flow.RegisterWatchHandler(f.path, f.watchHandler)
 
 	var wg sync.WaitGroup
