@@ -2,7 +2,6 @@ package horizontal
 
 import (
 	"context"
-	"errors"
 	"github.com/BeameryHQ/async-stream/lb"
 	"github.com/BeameryHQ/async-stream/stream"
 	"github.com/Sirupsen/logrus"
@@ -18,10 +17,6 @@ type HorizontalFlow interface {
 	RegisterHandler(h stream.FlowEventHandler)
 	Run(ctx context.Context, block bool) error
 }
-
-var (
-	errShutdown = errors.New("shutdown")
-)
 
 type FlowProcessorProvider struct {
 	// if enabled the list handlers won't be registered
@@ -56,12 +51,14 @@ func (f *FlowProcessorProvider) Run(ctx context.Context, block bool) error {
 
 	go func() {
 		defer wg.Done()
+		defer cancel()
+
 		f.logger.Info("starting the flow processor on path ", f.path)
 		f.flow.Run(ctx)
 	}()
 
 	go f.monitorLbChanges(ctx)
-	go f.processQueue()
+	go f.processQueue(cancel)
 
 	if !block {
 		return nil
@@ -73,10 +70,12 @@ func (f *FlowProcessorProvider) Run(ctx context.Context, block bool) error {
 	return nil
 }
 
-func (f *FlowProcessorProvider) processQueue() {
+func (f *FlowProcessorProvider) processQueue(cancel context.CancelFunc) {
+	defer cancel()
 	for {
 		if err := f.processQueueItem(); err != nil {
-			if err == errShutdown {
+			if err == stream.ErrFlowTerminated {
+				f.logger.Warnf("exiting processing got exit message : %v", err)
 				return
 			}
 			f.logger.Errorf("processing key failed : %v", err)
@@ -89,7 +88,7 @@ func (f *FlowProcessorProvider) processQueueItem() error {
 	defer f.queue.Done(key)
 	if exit {
 		f.logger.Warningf("queue got shutdown signal exiting")
-		return errShutdown
+		return stream.ErrFlowTerminated
 	}
 
 	event := f.cache.get(key.(string))
@@ -154,7 +153,7 @@ func (f *FlowProcessorProvider) isEventForMe(event *stream.FlowEvent) (bool, err
 	if err != nil {
 		if err == lb.DownErr {
 			f.cancel()
-			return false, errShutdown
+			return false, stream.ErrFlowTerminated
 		}
 		return false, err
 	}
@@ -177,13 +176,9 @@ func (f *FlowProcessorProvider) lbStreamHandler(event *stream.FlowEvent) error {
 
 	f.logger.Debug("lbStreamHandler processing event : ", event.Kv.Key)
 	for _, c := range f.handlers {
-
-		f.logger.Debug("lbStreamHandler pre-processing event : ", event.Kv.Key)
 		if err := c(event); err != nil {
 			return err
 		}
-		f.logger.Debug("lbStreamHandler post-processing event : ", event.Kv.Key)
-
 	}
 
 	return nil

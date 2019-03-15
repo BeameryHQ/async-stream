@@ -99,6 +99,8 @@ func (f *EtcdFlow) RegisterListHandler(path string, h FlowEventHandler) {
 }
 
 func (f *EtcdFlow) Run(ctx context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
+
 	f.logger.Debug("watch handlers : ", f.watchHandlers)
 	f.logger.Debug("key handlers : ", f.keyHandlers)
 
@@ -144,6 +146,12 @@ func (f *EtcdFlow) Run(ctx context.Context) {
 						} else {
 							metrics.IncrFlowProcessed()
 						}
+
+						if err == ErrFlowTerminated {
+							f.logger.Warnf("exit error received exiting : %v", err)
+							cancel()
+							return
+						}
 					}
 
 				case <-ctx.Done():
@@ -166,11 +174,21 @@ func (f *EtcdFlow) Run(ctx context.Context) {
 			<-f.readyWatchChan[p]
 		}
 
+		exiting := false
 		for _, h := range hs {
 			f.logger.Debug("starting processing path for list handlers ", p, h)
 			if err := f.fetchProcessKeys(ctx, p, h); err != nil {
 				f.logger.Errorf("failed processing path with key handler %s : %v", p, err)
+				if err == ErrFlowTerminated{
+					cancel()
+					exiting = true
+					break
+				}
 			}
+		}
+
+		if exiting {
+			break
 		}
 	}
 
@@ -227,9 +245,13 @@ func (f *EtcdFlow) fetchProcessKeys(ctx context.Context, path string, handler Fl
 			if err != nil {
 				metrics.IncrFlowFailed()
 				f.logger.Printf("skipping key in key handler %s : %v", k, err)
+				if err == ErrFlowTerminated {
+					return err
+				}
 				continue
 			}
 			metrics.IncrFlowProcessed()
+
 		}
 
 		firstFetch = false
@@ -301,6 +323,3 @@ func flowKeyValueFromEtcd(kv *mvccpb.KeyValue) *FlowKeyValue {
 		Value:          string(kv.Value),
 	}
 }
-
-
-

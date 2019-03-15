@@ -1,6 +1,9 @@
 package stream
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 type FlowEventHandler func(event *FlowEvent) error
 
@@ -9,3 +12,7 @@ type Flow interface {
 	RegisterListHandler(path string, handler FlowEventHandler)
 	Run(ctx context.Context)
 }
+
+var (
+	ErrFlowTerminated = errors.New("flow terminated")
+)
