@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 )
-
+var (
+	ErrFlowTerminated = errors.New("flow terminated")
+)
 type FlowEventHandler func(event *FlowEvent) error
 
 type Flow interface {
@@ -13,6 +15,4 @@ type Flow interface {
 	Run(ctx context.Context)
 }
 
-var (
-	ErrFlowTerminated = errors.New("flow terminated")
-)
+
