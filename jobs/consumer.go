@@ -42,7 +42,7 @@ type streamConsumer struct {
 	ctx          context.Context
 	streamCache  map[string]bool
 	mu           *sync.Mutex
-	flow         horizontal.HorizontalFlow
+	flow         horizontal.Flow
 
 	retryTime       time.Duration
 	runningNoUpdate time.Duration
@@ -50,7 +50,7 @@ type streamConsumer struct {
 	cancel          context.CancelFunc
 }
 
-func NewStreamConsumer(ctx context.Context, config *StreamConsumerConfiguration, jobStore JobStore, flow horizontal.HorizontalFlow) *streamConsumer {
+func NewStreamConsumer(ctx context.Context, config *StreamConsumerConfiguration, jobStore JobStore, flow horizontal.Flow) *streamConsumer {
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 
 	logger := logging.GetLogger().WithFields(logrus.Fields{

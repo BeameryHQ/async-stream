@@ -10,10 +10,10 @@ import (
 	"sync"
 )
 
-// HorizontalFlow is same as Flow but makes sure the handlers get only partitioned data
+// Flow is same as Flow but makes sure the handlers get only partitioned data
 // it's not able to distinguish between the the list and watch because of the nature of other members
 // joining and leaving might need to process the data of an old member who just left
-type HorizontalFlow interface {
+type Flow interface {
 	RegisterHandler(h stream.FlowEventHandler)
 	Run(ctx context.Context, block bool) error
 }

@@ -16,7 +16,7 @@ func NewEtcdStreamConsumer(ctx context.Context, cli *clientv3.Client, config *St
 		"path": config.Path,
 	})
 
-	horizontalFlow, err := horizontal.NewEtcdHorizontalFlowProcessor(ctx, cli, config.Path, config.ConsumerName, config.FromEnd, logger)
+	horizontalFlow, err := horizontal.NewEtcdFlowProcessor(ctx, cli, config.Path, config.ConsumerName, config.FromEnd, logger)
 	if err != nil {
 		return nil, err
 	}

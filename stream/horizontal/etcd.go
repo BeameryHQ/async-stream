@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func NewEtcdHorizontalFlowProcessor(ctx context.Context, cli *clientv3.Client, path string, consumerName string, fromEnd bool, logger *logrus.Entry) (HorizontalFlow, error) {
+func NewEtcdFlowProcessor(ctx context.Context, cli *clientv3.Client, path string, consumerName string, fromEnd bool, logger *logrus.Entry) (Flow, error) {
 	path = strings.TrimRight(path, "/")
 	flow := stream.NewEtcdFlow(cli)
 	etcdLb, err := lb.NewEtcdLoadBalancer(ctx, cli, path, consumerName)
