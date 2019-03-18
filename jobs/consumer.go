@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"github.com/BeameryHQ/async-stream/kvstore"
 	"github.com/BeameryHQ/async-stream/logging"
 	"github.com/BeameryHQ/async-stream/metrics"
 	"github.com/BeameryHQ/async-stream/stream"
@@ -235,7 +236,7 @@ func (s *streamConsumer) processQueue() {
 	//it's a small guarantee we need in case of worker shuffling
 	if err := s.jobStore.MarkRunning(s.ctx, jobId); err != nil {
 		s.logger.Warningf("marking the job as running failed %s : %v", jobId, err)
-		if err == ErrConcurrentJobUpdate {
+		if err == kvstore.ErrConcurrentUpdate {
 			now := time.Now().UTC()
 			nextRun := now.Add(s.runningNoUpdate)
 			runIn := nextRun.Sub(now)
