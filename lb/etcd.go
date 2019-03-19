@@ -136,6 +136,7 @@ func NewEtcdLoadBalancer(ctx context.Context, cli *clientv3.Client, path string,
 	}()
 
 	metrics.SetOnline()
+
 	return l, nil
 }
 
