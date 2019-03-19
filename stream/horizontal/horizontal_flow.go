@@ -160,7 +160,6 @@ func (f *FlowProcessorProvider) isEventForMe(event *stream.FlowEvent) (bool, err
 
 	// skip this one
 	if target != f.consumerName {
-		f.logger.Debug("skipping event not for me : ", event.Kv.Key)
 		return false, nil
 	}
 
@@ -187,9 +186,12 @@ func (f *FlowProcessorProvider) lbStreamHandler(event *stream.FlowEvent) error {
 // checks the dirty flag and does the re-processing of the whole cache again
 func (f *FlowProcessorProvider) reProcessCache() {
 	f.logger.Info("re processing the cache from the beginning ")
+	i := 0
 	for v := range f.cache.iterate() {
 		f.queue.Add(v.Kv.Key)
+		i++
 	}
+	f.logger.Infof("%d items were re-queued for processing again", i)
 }
 
 func (f *FlowProcessorProvider) monitorLbChanges(ctx context.Context) {

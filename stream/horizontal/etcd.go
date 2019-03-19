@@ -22,6 +22,8 @@ func NewEtcdFlowProcessor(ctx context.Context, cli *clientv3.Client, path string
 	handlers := []stream.FlowEventHandler{}
 	cache := newFlowCache()
 
+	logger = logger.WithField("consumerName", consumerName)
+
 	return &FlowProcessorProvider{
 		fromEnd:      fromEnd,
 		flow:         flow,
