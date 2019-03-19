@@ -93,7 +93,7 @@ func TestStreamConsumer_StartLbStop(t *testing.T) {
 		consumer.Start(true)
 	}()
 
-	consumer.jobFilter.Close()
+	consumer.cancel()
 	wg.Wait()
 
 }
@@ -141,7 +141,7 @@ func TestEtcdJobStore_Run(t *testing.T) {
 		consumer.Start(true)
 	}()
 
-	p := NewJobProducer(res.Cli, path)
+	p := NewEtcdJobProducer(res.Cli, path)
 
 	runUntil := &flowUntil{
 		cli:     res.Cli,

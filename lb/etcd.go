@@ -29,7 +29,7 @@ const (
 	unpauseCmd = "UNPAUSE"
 )
 
-type etcdBakedLoadBalancer struct {
+type etcdBackedLoadBalancer struct {
 	ctx            context.Context
 	cancelFunc     context.CancelFunc
 	logger         *logrus.Entry
@@ -101,7 +101,7 @@ func NewEtcdLoadBalancer(ctx context.Context, cli *clientv3.Client, path string,
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithCancel(ctx)
 
-	l := &etcdBakedLoadBalancer{
+	l := &etcdBackedLoadBalancer{
 		ctx:        ctx,
 		cancelFunc: cancel,
 		logger:     logger,
@@ -139,7 +139,7 @@ func NewEtcdLoadBalancer(ctx context.Context, cli *clientv3.Client, path string,
 	return l, nil
 }
 
-func (l *etcdBakedLoadBalancer) Target(key string, waitSettleTime bool) (string, error) {
+func (l *etcdBackedLoadBalancer) Target(key string, waitSettleTime bool) (string, error) {
 	if waitSettleTime {
 		for {
 			stopped, err := l.isStopped()
@@ -167,21 +167,21 @@ func (l *etcdBakedLoadBalancer) Target(key string, waitSettleTime bool) (string,
 	return l.getNodeSafe(key)
 }
 
-func (l *etcdBakedLoadBalancer) Notify() <-chan *LbEvent {
+func (l *etcdBackedLoadBalancer) Notify() <-chan *LbEvent {
 	return l.notifyChan
 }
 
-func (l *etcdBakedLoadBalancer) NotifyBulk() <-chan []*LbEvent {
+func (l *etcdBackedLoadBalancer) NotifyBulk() <-chan []*LbEvent {
 	return l.notifyBulkChan
 }
 
-func (l *etcdBakedLoadBalancer) Close() {
+func (l *etcdBackedLoadBalancer) Close() {
 	l.logger.Debug("closing the lb by calling Close")
 	l.cancelFunc()
 }
 
 // should only be called inside of concurrently safe methods
-func (l *etcdBakedLoadBalancer) sendNotification(e *LbEvent) {
+func (l *etcdBackedLoadBalancer) sendNotification(e *LbEvent) {
 	select {
 	case l.notifyChan <- e:
 		l.logger.Debugln("send notification : ", e)
@@ -192,7 +192,7 @@ func (l *etcdBakedLoadBalancer) sendNotification(e *LbEvent) {
 
 // sendBulkNotification is clever version of sendNotification where one addition of lb cancels out one removal
 // also if there's one stopped event the others are discarded and are sent in bulk to downstream
-func (l *etcdBakedLoadBalancer) sendBulkNotification(events []*LbEvent) {
+func (l *etcdBackedLoadBalancer) sendBulkNotification(events []*LbEvent) {
 	if len(events) == 0 {
 		return
 	}
@@ -250,7 +250,7 @@ func (l *etcdBakedLoadBalancer) sendBulkNotification(events []*LbEvent) {
 	send()
 }
 
-func (l *etcdBakedLoadBalancer) getNodeSafe(key string) (string, error) {
+func (l *etcdBackedLoadBalancer) getNodeSafe(key string) (string, error) {
 	l.ringLock.Lock()
 	defer l.ringLock.Unlock()
 
@@ -262,7 +262,7 @@ func (l *etcdBakedLoadBalancer) getNodeSafe(key string) (string, error) {
 	return target, nil
 }
 
-func (l *etcdBakedLoadBalancer) registerTarget(target string) error {
+func (l *etcdBackedLoadBalancer) registerTarget(target string) error {
 	l.ringLock.Lock()
 	defer l.ringLock.Unlock()
 
@@ -279,7 +279,7 @@ func (l *etcdBakedLoadBalancer) registerTarget(target string) error {
 	return nil
 }
 
-func (l *etcdBakedLoadBalancer) removeTarget(target string) error {
+func (l *etcdBackedLoadBalancer) removeTarget(target string) error {
 	l.ringLock.Lock()
 	defer l.ringLock.Unlock()
 
@@ -295,7 +295,7 @@ func (l *etcdBakedLoadBalancer) removeTarget(target string) error {
 	return nil
 }
 
-func (l *etcdBakedLoadBalancer) addTargetRemote(ctx context.Context, target string) error {
+func (l *etcdBackedLoadBalancer) addTargetRemote(ctx context.Context, target string) error {
 	key := l.path + "/" + target
 
 	keepAliveChan, err := l.getKeepAliveChan(ctx, key)
@@ -338,7 +338,7 @@ func (l *etcdBakedLoadBalancer) addTargetRemote(ctx context.Context, target stri
 	return nil
 }
 
-func (l *etcdBakedLoadBalancer) getKeepAliveChan(ctx context.Context, key string) (<-chan *clientv3.LeaseKeepAliveResponse, error) {
+func (l *etcdBackedLoadBalancer) getKeepAliveChan(ctx context.Context, key string) (<-chan *clientv3.LeaseKeepAliveResponse, error) {
 	lease := clientv3.NewLease(l.cli)
 	leaseResp, err := lease.Grant(ctx, 5)
 	if err != nil {
@@ -353,7 +353,7 @@ func (l *etcdBakedLoadBalancer) getKeepAliveChan(ctx context.Context, key string
 	return lease.KeepAlive(ctx, leaseResp.ID)
 }
 
-func (l *etcdBakedLoadBalancer) extractTargetFromKey(key string) (string, error) {
+func (l *etcdBackedLoadBalancer) extractTargetFromKey(key string) (string, error) {
 	pathPrefix := strings.TrimRight(l.path, "/") + "/"
 	regexStr := pathPrefix + `(.+)`
 	r, err := regexp.Compile(regexStr)
@@ -369,7 +369,7 @@ func (l *etcdBakedLoadBalancer) extractTargetFromKey(key string) (string, error)
 	return parts[1], nil
 }
 
-func (l *etcdBakedLoadBalancer) keyHandler(event *stream.FlowEvent) error {
+func (l *etcdBackedLoadBalancer) keyHandler(event *stream.FlowEvent) error {
 
 	target, err := l.extractTargetFromKey(string(event.Kv.Key))
 	if err != nil {
@@ -379,7 +379,7 @@ func (l *etcdBakedLoadBalancer) keyHandler(event *stream.FlowEvent) error {
 	return l.registerTarget(target)
 }
 
-func (l *etcdBakedLoadBalancer) watchHandler(event *stream.FlowEvent) error {
+func (l *etcdBackedLoadBalancer) watchHandler(event *stream.FlowEvent) error {
 	target, err := l.extractTargetFromKey(string(event.Kv.Key))
 	if err != nil {
 		return err
@@ -392,7 +392,7 @@ func (l *etcdBakedLoadBalancer) watchHandler(event *stream.FlowEvent) error {
 	return l.removeTarget(target)
 }
 
-func (l *etcdBakedLoadBalancer) isStopped() (bool, error) {
+func (l *etcdBackedLoadBalancer) isStopped() (bool, error) {
 	l.stoppedMu.Lock()
 	defer l.stoppedMu.Unlock()
 
@@ -404,7 +404,7 @@ func (l *etcdBakedLoadBalancer) isStopped() (bool, error) {
 	return l.stopped, nil
 }
 
-func (l *etcdBakedLoadBalancer) setStop(val bool) {
+func (l *etcdBackedLoadBalancer) setStop(val bool) {
 	l.stoppedMu.Lock()
 	defer l.stoppedMu.Unlock()
 	if val {
@@ -416,21 +416,21 @@ func (l *etcdBakedLoadBalancer) setStop(val bool) {
 	l.stopped = val
 }
 
-func (l *etcdBakedLoadBalancer) setPause() {
+func (l *etcdBackedLoadBalancer) setPause() {
 	l.setStop(true)
 	l.lbPauseChan <- pauseCmd
 }
 
-func (l *etcdBakedLoadBalancer) clearPause() {
+func (l *etcdBackedLoadBalancer) clearPause() {
 	l.lbPauseChan <- unpauseCmd
 }
 
-func (l *etcdBakedLoadBalancer) setPauseSettle(event *LbEvent) {
+func (l *etcdBackedLoadBalancer) setPauseSettle(event *LbEvent) {
 	l.setStop(true)
 	l.lbSettleChan <- event
 }
 
-func (l *etcdBakedLoadBalancer) monitorLbPause() {
+func (l *etcdBackedLoadBalancer) monitorLbPause() {
 	var stopped, changed, paused bool
 	var lbEvents []*LbEvent
 	for {

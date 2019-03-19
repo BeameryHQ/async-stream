@@ -3,27 +3,25 @@ package jobs
 import (
 	"context"
 	"encoding/json"
-	"go.etcd.io/etcd/clientv3"
+	"github.com/BeameryHQ/async-stream/kvstore"
 	"strings"
 )
 
-type Producer struct {
-	cli  *clientv3.Client
+type Producer interface {
+	Submit(ctx context.Context, taskName string, args JobParameters) (string, error)
+	SubmitWithRetry(ctx context.Context, taskName string, args JobParameters, maxRetry int) (string, error)
+}
+
+type producerProvider struct {
+	cli  kvstore.Store
 	path string
 }
 
-func NewJobProducer(cli *clientv3.Client, path string) *Producer {
-	return &Producer{
-		cli:  cli,
-		path: path,
-	}
-}
-
-func (p *Producer) fullPath(jobId string) string {
+func (p *producerProvider) fullPath(jobId string) string {
 	return strings.Join([]string{p.path, jobId, "data"}, "/")
 }
 
-func (p *Producer) Submit(ctx context.Context, taskName string, args JobParameters) (string, error) {
+func (p *producerProvider) Submit(ctx context.Context, taskName string, args JobParameters) (string, error) {
 	jobId, j := NewJob(taskName, args)
 	jobPayload, err := json.Marshal(j)
 	if err != nil {
@@ -31,7 +29,7 @@ func (p *Producer) Submit(ctx context.Context, taskName string, args JobParamete
 	}
 
 	jobPath := p.fullPath(jobId)
-	_, err = p.cli.Put(ctx, jobPath, string(jobPayload))
+	err = p.cli.Put(ctx, jobPath, string(jobPayload), kvstore.WithNoLease())
 	if err != nil {
 		return "", err
 	}
@@ -39,8 +37,7 @@ func (p *Producer) Submit(ctx context.Context, taskName string, args JobParamete
 	return jobId, nil
 }
 
-
-func (p *Producer) SubmitWithRetry(ctx context.Context, taskName string, args JobParameters, maxRetry int) (string, error) {
+func (p *producerProvider) SubmitWithRetry(ctx context.Context, taskName string, args JobParameters, maxRetry int) (string, error) {
 	jobId, j := NewJobWithRetry(taskName, args, maxRetry)
 	jobPayload, err := json.Marshal(j)
 	if err != nil {
@@ -48,7 +45,7 @@ func (p *Producer) SubmitWithRetry(ctx context.Context, taskName string, args Jo
 	}
 
 	jobPath := p.fullPath(jobId)
-	_, err = p.cli.Put(ctx, jobPath, string(jobPayload))
+	err = p.cli.Put(ctx, jobPath, string(jobPayload), kvstore.WithNoLease())
 	if err != nil {
 		return "", err
 	}

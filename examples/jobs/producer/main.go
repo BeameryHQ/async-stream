@@ -20,7 +20,7 @@ func main() {
 		log.Fatalf("etcd client creation failed %v", err)
 	}
 
-	p := jobs.NewJobProducer(cli, "/async/jobs")
+	p := jobs.NewEtcdJobProducer(cli, "/async/jobs")
 
 	taskName := "aws.bucketProcessor"
 	ctx := context.Background()
