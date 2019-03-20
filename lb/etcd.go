@@ -203,7 +203,7 @@ func (l *etcdBackedLoadBalancer) sendBulkNotification(events []*LbEvent) {
 	send := func() {
 		select {
 		case l.notifyBulkChan <- finalEvents:
-			l.logger.Debugln("send bulk notification : ", finalEvents)
+			l.logger.Debugf("send bulk notification : %+v", finalEvents)
 		default:
 			return
 		}
