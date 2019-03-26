@@ -3,6 +3,7 @@ package metrics
 const (
 	processedKey   = "flow_items_processed"
 	failedKey      = "flow_items_failed"
+	createdKey     = "flow_items_created"
 	createdListKey = "flow_items_created_list"
 	createdWatcKey = "flow_items_created_watch"
 	updatedKey     = "flow_items_updated"
@@ -12,6 +13,7 @@ const (
 var (
 	flowProcessed    = newSimpleMetric(processedKey)
 	flowFailed       = newSimpleMetric(failedKey)
+	flowCreated      = newSimpleMetric(createdKey)
 	flowCreatedList  = newSimpleMetric(createdListKey)
 	flowCreatedWatch = newSimpleMetric(createdWatcKey)
 	flowUpdated      = newSimpleMetric(updatedKey)
@@ -24,6 +26,10 @@ func IncrFlowProcessed() {
 
 func IncrFlowFailed() {
 	flowFailed.Incr()
+}
+
+func IncrFlowCreated() {
+	flowCreated.Incr()
 }
 
 func IncrFlowCreatedList() {

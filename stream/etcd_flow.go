@@ -179,7 +179,7 @@ func (f *EtcdFlow) Run(ctx context.Context) {
 			f.logger.Debug("starting processing path for list handlers ", p, h)
 			if err := f.fetchProcessKeys(ctx, p, h); err != nil {
 				f.logger.Errorf("failed processing path with key handler %s : %v", p, err)
-				if err == ErrFlowTerminated{
+				if err == ErrFlowTerminated {
 					cancel()
 					exiting = true
 					break
@@ -269,6 +269,7 @@ func (f *EtcdFlow) incrEventMetrics(e *FlowEvent, watch bool) {
 		} else {
 			metrics.IncrFlowCreatedWatch()
 		}
+		metrics.IncrFlowCreated()
 	case FlowEventUpdated:
 		metrics.IncrFlowUpdated()
 	case FlowEventDeleted:

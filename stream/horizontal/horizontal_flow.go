@@ -93,8 +93,13 @@ func (f *FlowProcessorProvider) processQueueItem() error {
 
 	event := f.cache.get(key.(string))
 	if event == nil {
-		f.logger.Warningf("expired key %s", key.(string))
+		f.logger.Warningf("expired key %s", key)
 		return nil
+	}
+
+	if event.IsDeleted() {
+		// after we're done rm it from the cache permanently
+		defer f.cache.del(event.Kv.Key)
 	}
 
 	if err := f.lbStreamHandler(event); err != nil {
@@ -132,18 +137,17 @@ func (f *FlowProcessorProvider) watchHandler(event *stream.FlowEvent) error {
 		return nil
 	}
 
-	if event.IsDeleted() {
-		f.cache.del(event.Kv.Key)
-		return nil
-	} else {
-		f.cache.put(event.Kv.Key, event)
-	}
-
 	ok, err := f.isEventForMe(event)
 	if err != nil || !ok {
+
+		// if event is not for this one and is deleted rm from the cache now
+		if !ok && event.IsDeleted() {
+			f.cache.del(event.Kv.Key)
+		}
 		return err
 	}
 
+	f.cache.put(event.Kv.Key, event)
 	f.queue.Add(event.Kv.Key)
 	return nil
 }
@@ -160,7 +164,6 @@ func (f *FlowProcessorProvider) isEventForMe(event *stream.FlowEvent) (bool, err
 
 	// skip this one
 	if target != f.consumerName {
-		f.logger.Debug("skipping event not for me : ", event.Kv.Key)
 		return false, nil
 	}
 
@@ -174,7 +177,7 @@ func (f *FlowProcessorProvider) lbStreamHandler(event *stream.FlowEvent) error {
 		return err
 	}
 
-	f.logger.Debug("lbStreamHandler processing event : ", event.Kv.Key)
+	f.logger.Debug("lbStreamHandler processing event : ", event.Kv.Key, event.Type)
 	for _, c := range f.handlers {
 		if err := c(event); err != nil {
 			return err
@@ -187,9 +190,12 @@ func (f *FlowProcessorProvider) lbStreamHandler(event *stream.FlowEvent) error {
 // checks the dirty flag and does the re-processing of the whole cache again
 func (f *FlowProcessorProvider) reProcessCache() {
 	f.logger.Info("re processing the cache from the beginning ")
+	i := 0
 	for v := range f.cache.iterate() {
 		f.queue.Add(v.Kv.Key)
+		i++
 	}
+	f.logger.Infof("%d items were re-queued for processing again", i)
 }
 
 func (f *FlowProcessorProvider) monitorLbChanges(ctx context.Context) {
@@ -227,3 +233,5 @@ func (f *FlowProcessorProvider) shouldSkipPath(path string) bool {
 
 	return strings.HasPrefix(path, parentPath)
 }
+
+

@@ -136,6 +136,7 @@ func NewEtcdLoadBalancer(ctx context.Context, cli *clientv3.Client, path string,
 	}()
 
 	metrics.SetOnline()
+
 	return l, nil
 }
 
@@ -202,7 +203,7 @@ func (l *etcdBackedLoadBalancer) sendBulkNotification(events []*LbEvent) {
 	send := func() {
 		select {
 		case l.notifyBulkChan <- finalEvents:
-			l.logger.Debugln("send bulk notification : ", finalEvents)
+			l.logger.Debugf("send bulk notification : %+v", finalEvents)
 		default:
 			return
 		}
