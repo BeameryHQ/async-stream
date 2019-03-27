@@ -6,7 +6,8 @@ import (
 	"go.etcd.io/etcd/clientv3"
 )
 
-const defaultRetenionPeriod = 60 * 5
+// 12 hrs would be the default one
+const defaultRetentionPeriod = 60 * 60 * 12
 
 type etcdStore struct {
 	cli *clientv3.Client
@@ -51,7 +52,7 @@ func (s *etcdStore) Put(ctx context.Context, key, value string, opts ...PutOptio
 	lease := !pc.disableLease
 
 	if !lease {
-		// if not intersted in versioning at all just insert it
+		// if not interested in versioning at all just insert it
 		if pc.version == 0 {
 			_, err := s.cli.Put(ctx, key, value)
 			return err
@@ -61,7 +62,11 @@ func (s *etcdStore) Put(ctx context.Context, key, value string, opts ...PutOptio
 		}
 	}
 
-	leaseResp, err := s.cli.Grant(ctx, defaultRetenionPeriod)
+	if pc.ttl == 0 {
+		pc.ttl = defaultRetentionPeriod
+	}
+
+	leaseResp, err := s.cli.Grant(ctx, pc.ttl)
 	if err != nil {
 		return err
 	}
@@ -69,6 +74,11 @@ func (s *etcdStore) Put(ctx context.Context, key, value string, opts ...PutOptio
 	_, err = s.cli.Put(ctx, key, value, clientv3.WithLease(leaseResp.ID))
 	return err
 
+}
+
+func (s *etcdStore) Delete(ctx context.Context, key string) error {
+	_, err := s.cli.Delete(context.Background(), key)
+	return err
 }
 
 func (s *etcdStore) putTxn(ctx context.Context, key, value string, modVersion int64) error {
