@@ -8,8 +8,17 @@ import (
 )
 
 type Producer interface {
-	Submit(ctx context.Context, taskName string, args JobParameters) (string, error)
-	SubmitWithRetry(ctx context.Context, taskName string, args JobParameters, maxRetry int) (string, error)
+	Submit(ctx context.Context, taskName string, args JobParameters, opts ...SubmitOption) (string, error)
+}
+
+type submitOption struct {
+	retryCount int
+}
+
+func newSubmitOption() *submitOption {
+	return &submitOption{
+		retryCount: defaultMaxJobRetries,
+	}
 }
 
 type producerProvider struct {
@@ -17,28 +26,34 @@ type producerProvider struct {
 	path string
 }
 
+type SubmitOption func(option *submitOption)
+
+func WithRetryCount(retry int) SubmitOption {
+	return func(option *submitOption) {
+		if retry > 0 {
+			option.retryCount = retry
+		}
+	}
+}
+
+func NewProducer(path string, cli kvstore.Store) Producer {
+	return &producerProvider{
+		cli:  cli,
+		path: path,
+	}
+}
+
 func (p *producerProvider) fullPath(jobId string) string {
 	return strings.Join([]string{p.path, jobId, "data"}, "/")
 }
 
-func (p *producerProvider) Submit(ctx context.Context, taskName string, args JobParameters) (string, error) {
-	jobId, j := NewJob(taskName, args)
-	jobPayload, err := json.Marshal(j)
-	if err != nil {
-		return "", err
+func (p *producerProvider) Submit(ctx context.Context, taskName string, args JobParameters, opts ...SubmitOption) (string, error) {
+	option := newSubmitOption()
+	for _, o := range opts {
+		o(option)
 	}
 
-	jobPath := p.fullPath(jobId)
-	err = p.cli.Put(ctx, jobPath, string(jobPayload), kvstore.WithNoLease())
-	if err != nil {
-		return "", err
-	}
-
-	return jobId, nil
-}
-
-func (p *producerProvider) SubmitWithRetry(ctx context.Context, taskName string, args JobParameters, maxRetry int) (string, error) {
-	jobId, j := NewJobWithRetry(taskName, args, maxRetry)
+	jobId, j := NewJobWithRetry(taskName, args, option.retryCount)
 	jobPayload, err := json.Marshal(j)
 	if err != nil {
 		return "", err
