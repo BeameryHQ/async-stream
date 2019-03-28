@@ -49,24 +49,24 @@ func (s *etcdStore) Put(ctx context.Context, key, value string, opts ...PutOptio
 		o(pc)
 	}
 
-	lease := !pc.disableLease
+	lease := !pc.DisableLease
 
 	if !lease {
 		// if not interested in versioning at all just insert it
-		if pc.version == 0 {
+		if pc.Version == 0 {
 			_, err := s.cli.Put(ctx, key, value)
 			return err
 		} else {
-			modVersion := pc.version
+			modVersion := pc.Version
 			return s.putTxn(ctx, key, value, modVersion)
 		}
 	}
 
-	if pc.ttl == 0 {
-		pc.ttl = defaultRetentionPeriod
+	if pc.Ttl == 0 {
+		pc.Ttl = defaultRetentionPeriod
 	}
 
-	leaseResp, err := s.cli.Grant(ctx, pc.ttl)
+	leaseResp, err := s.cli.Grant(ctx, pc.Ttl)
 	if err != nil {
 		return err
 	}

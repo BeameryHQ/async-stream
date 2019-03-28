@@ -12,36 +12,36 @@ var (
 )
 
 type PutConfig struct {
-	disableLease bool
-	version      int64
-	ttl          int64
+	DisableLease bool
+	Version      int64
+	Ttl          int64
 }
 
 type PutOption func(c *PutConfig)
 
 func NewPutConfig() *PutConfig {
 	return &PutConfig{
-		disableLease: false,
-		version:      0,
-		ttl:          0,
+		DisableLease: false,
+		Version:      0,
+		Ttl:          0,
 	}
 }
 
 func WithVersion(version int64) PutOption {
 	return func(c *PutConfig) {
-		c.version = version
+		c.Version = version
 	}
 }
 
 func WithNoLease() PutOption {
 	return func(c *PutConfig) {
-		c.disableLease = true
+		c.DisableLease = true
 	}
 }
 
 func WithTtl(ttl int64) PutOption {
 	return func(c *PutConfig) {
-		c.ttl = ttl
+		c.Ttl = ttl
 	}
 }
 
