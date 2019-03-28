@@ -79,7 +79,7 @@ func NewStreamConsumer(ctx context.Context, config *StreamConsumerConfiguration,
 	}
 }
 
-func applyDefaults(config *StreamConsumerConfiguration) {
+func ApplyDefaults(config *StreamConsumerConfiguration) {
 	if config.Concurrency == 0 {
 		config.Concurrency = defaultConcurrency
 	}

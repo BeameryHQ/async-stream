@@ -9,7 +9,7 @@ import (
 )
 
 func NewEtcdStreamConsumer(ctx context.Context, cli *clientv3.Client, config *StreamConsumerConfiguration) (*streamConsumer, error) {
-	applyDefaults(config)
+	ApplyDefaults(config)
 
 	jobStore := NewEtcdJobStore(cli, config.Path, config.ConsumerName, config.RunningNoUpdate)
 	logger := logging.GetLogger().WithFields(logrus.Fields{
