@@ -23,6 +23,11 @@ const (
 	defaultConcurrency            = 10
 )
 
+type Consumer interface {
+	Start(block bool)
+	RegisterHandler(taskName string, handler JobHandler)
+}
+
 type StreamConsumerConfiguration struct {
 	Path         string `validate:"required" yaml:"Path"`
 	ConsumerName string `validate:"required" yaml:"ConsumerName"`
