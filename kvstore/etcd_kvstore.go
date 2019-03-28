@@ -44,7 +44,7 @@ func (s *etcdStore) Get(ctx context.Context, key string) (*stream.FlowKeyValue, 
 }
 
 func (s *etcdStore) Put(ctx context.Context, key, value string, opts ...PutOption) error {
-	pc := newPutConfig()
+	pc := NewPutConfig()
 	for _, o := range opts {
 		o(pc)
 	}

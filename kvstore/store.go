@@ -19,7 +19,7 @@ type PutConfig struct {
 
 type PutOption func(c *PutConfig)
 
-func newPutConfig() *PutConfig {
+func NewPutConfig() *PutConfig {
 	return &PutConfig{
 		disableLease: false,
 		version:      0,
