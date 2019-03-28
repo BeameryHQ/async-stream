@@ -11,16 +11,16 @@ var (
 	ErrConcurrentUpdate = errors.New("concurrent update")
 )
 
-type putConfig struct {
+type PutConfig struct {
 	disableLease bool
 	version      int64
 	ttl          int64
 }
 
-type PutOption func(c *putConfig)
+type PutOption func(c *PutConfig)
 
-func newPutConfig() *putConfig {
-	return &putConfig{
+func newPutConfig() *PutConfig {
+	return &PutConfig{
 		disableLease: false,
 		version:      0,
 		ttl:          0,
@@ -28,19 +28,19 @@ func newPutConfig() *putConfig {
 }
 
 func WithVersion(version int64) PutOption {
-	return func(c *putConfig) {
+	return func(c *PutConfig) {
 		c.version = version
 	}
 }
 
 func WithNoLease() PutOption {
-	return func(c *putConfig) {
+	return func(c *PutConfig) {
 		c.disableLease = true
 	}
 }
 
 func WithTtl(ttl int64) PutOption {
-	return func(c *putConfig) {
+	return func(c *PutConfig) {
 		c.ttl = ttl
 	}
 }
