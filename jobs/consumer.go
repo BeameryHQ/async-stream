@@ -31,6 +31,9 @@ type StreamConsumerConfiguration struct {
 	NextRetry       time.Duration `yaml:"NextRetry"`
 	RunningNoUpdate time.Duration `yaml:"RunningNoUpdate"`
 	FromEnd         bool          `yaml:"FromEnd"`
+	// how often to set the job.UpdateAt field to keep the job running
+	HeartBeatInteval time.Duration `yaml:"HeartBeatInteval"`
+	RetentionPeriod  time.Duration `yaml:"RetentionPeriod"`
 }
 
 type streamConsumer struct {
@@ -45,10 +48,12 @@ type streamConsumer struct {
 	mu           *sync.Mutex
 	flow         horizontal.Flow
 
-	retryTime       time.Duration
-	runningNoUpdate time.Duration
-	concurrency     int
-	cancel          context.CancelFunc
+	retryTime         time.Duration
+	runningNoUpdate   time.Duration
+	concurrency       int
+	cancel            context.CancelFunc
+	progress          *Progress
+	heartBeatInterval time.Duration
 }
 
 func NewStreamConsumer(ctx context.Context, config *StreamConsumerConfiguration, jobStore JobStore, flow horizontal.Flow) *streamConsumer {
@@ -59,23 +64,27 @@ func NewStreamConsumer(ctx context.Context, config *StreamConsumerConfiguration,
 		"path":         config.Path,
 	})
 
+	p := NewProgress(jobStore, logger)
+
 	ctx, cancel := context.WithCancel(ctx)
 
 	return &streamConsumer{
-		logger:          logger,
-		path:            config.Path,
-		consumerID:      config.ConsumerName,
-		queue:           queue,
-		taskHandlers:    map[string]JobHandler{},
-		jobStore:        jobStore,
-		ctx:             ctx,
-		streamCache:     map[string]bool{},
-		mu:              &sync.Mutex{},
-		flow:            flow,
-		retryTime:       config.NextRetry,
-		runningNoUpdate: config.RunningNoUpdate,
-		concurrency:     config.Concurrency,
-		cancel:          cancel,
+		logger:            logger,
+		path:              config.Path,
+		consumerID:        config.ConsumerName,
+		queue:             queue,
+		taskHandlers:      map[string]JobHandler{},
+		jobStore:          jobStore,
+		ctx:               ctx,
+		streamCache:       map[string]bool{},
+		mu:                &sync.Mutex{},
+		flow:              flow,
+		retryTime:         config.NextRetry,
+		runningNoUpdate:   config.RunningNoUpdate,
+		concurrency:       config.Concurrency,
+		cancel:            cancel,
+		progress:          p,
+		heartBeatInterval: config.HeartBeatInteval,
 	}
 }
 
@@ -194,6 +203,9 @@ func (s *streamConsumer) streamHandler(event *stream.FlowEvent) error {
 }
 
 func (s *streamConsumer) processQueue() {
+	// this is needed to stop the heartbeat sender
+	ctx, cancel := context.WithCancel(s.ctx)
+	defer cancel()
 
 	key, exit := s.queue.Get()
 	defer s.queue.Done(key)
@@ -216,6 +228,7 @@ func (s *streamConsumer) processQueue() {
 			if err != nil {
 				s.logger.Errorf("couldn't mark the job as failed on panic: %v", err)
 			}
+			cancel()
 			// raise it again so can be handled by worker monitor to restart the current worker
 			panic(rec)
 		}
@@ -256,10 +269,17 @@ func (s *streamConsumer) processQueue() {
 		"jobId":    j.Id,
 	})
 
-	// run in inside the metrics wrapper so can record how long it's been running
-	metrics.IncrJobsRunningElapsed(func() {
-		err = handler.Handle(s.jobStore, j, handlerLog)
-	})
+	// we run the task inside of progress ticker so we can keep the flag alive
+	err = s.progress.RunWithProgressTime(ctx, jobId, func() error {
+		var err error
+		// run in inside the metrics wrapper so can record how long it's been running
+		metrics.IncrJobsRunningElapsed(func() {
+			err = handler.Handle(s.jobStore, j, handlerLog)
+		})
+		s.logger.Debug("done processing of handler : ", err)
+		return err
+	}, WithTickTime(s.heartBeatInterval))
+	s.logger.Debug("done processing of ticker : ", err)
 
 	if err == nil {
 		s.logger.Debug("the job processed successfully : ", jobId)

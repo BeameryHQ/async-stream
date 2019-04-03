@@ -7,13 +7,13 @@ import (
 )
 
 // 12 hrs would be the default one
-const defaultRetentionPeriod = 60 * 60 * 12
+const DefaultRetentionPeriod = 60 * 60 * 12
 
 type etcdStore struct {
 	cli *clientv3.Client
 }
 
-func NewEtcdStore(cli *clientv3.Client) Store {
+func NewEtcdKVStore(cli *clientv3.Client) Store {
 	return &etcdStore{
 		cli: cli,
 	}
@@ -49,31 +49,11 @@ func (s *etcdStore) Put(ctx context.Context, key, value string, opts ...PutOptio
 		o(pc)
 	}
 
-	lease := !pc.disableLease
-
-	if !lease {
-		// if not interested in versioning at all just insert it
-		if pc.version == 0 {
-			_, err := s.cli.Put(ctx, key, value)
-			return err
-		} else {
-			modVersion := pc.version
-			return s.putTxn(ctx, key, value, modVersion)
-		}
+	if pc.version == 0 {
+		return s.put(ctx, key, value, pc)
 	}
 
-	if pc.ttl == 0 {
-		pc.ttl = defaultRetentionPeriod
-	}
-
-	leaseResp, err := s.cli.Grant(ctx, pc.ttl)
-	if err != nil {
-		return err
-	}
-
-	_, err = s.cli.Put(ctx, key, value, clientv3.WithLease(leaseResp.ID))
-	return err
-
+	return s.putTxn(ctx, key, value, pc)
 }
 
 func (s *etcdStore) Delete(ctx context.Context, key string) error {
@@ -81,14 +61,41 @@ func (s *etcdStore) Delete(ctx context.Context, key string) error {
 	return err
 }
 
-func (s *etcdStore) putTxn(ctx context.Context, key, value string, modVersion int64) error {
+func (s *etcdStore) put(ctx context.Context, key, value string, pc *putConfig) error {
+	opts := []clientv3.OpOption{}
+
+	if pc.ttl != 0 {
+		leaseResp, err := s.cli.Grant(ctx, pc.ttl)
+		if err != nil {
+			return err
+		}
+
+		opts = append(opts, clientv3.WithLease(leaseResp.ID))
+	}
+
+	_, err := s.cli.Put(ctx, key, value, opts...)
+	return err
+}
+
+func (s *etcdStore) putTxn(ctx context.Context, key, value string, pc *putConfig) error {
+	opts := []clientv3.OpOption{}
+
+	if pc.ttl != 0 {
+		leaseResp, err := s.cli.Grant(ctx, pc.ttl)
+		if err != nil {
+			return err
+		}
+
+		opts = append(opts, clientv3.WithLease(leaseResp.ID))
+	}
+
 	tx := s.cli.Txn(ctx)
 	tx = tx.If(
-		clientv3.Compare(clientv3.ModRevision(key), "=", modVersion),
+		clientv3.Compare(clientv3.ModRevision(key), "=", pc.version),
 	)
 
 	putResp, err := tx.Then(
-		clientv3.OpPut(key, value),
+		clientv3.OpPut(key, value, opts...),
 	).Commit()
 
 	if err != nil {

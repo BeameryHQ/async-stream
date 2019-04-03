@@ -10,10 +10,10 @@ import (
 	"strings"
 )
 
-func NewEtcdFlowProcessor(ctx context.Context, cli *clientv3.Client, path string, consumerName string, fromEnd bool, logger *logrus.Entry) (Flow, error) {
+func NewEtcdFlowProcessor(ctx context.Context, cli *clientv3.Client, path string, consumerName string, fromEnd bool, logger *logrus.Entry, opts ...lb.Option) (Flow, error) {
 	path = strings.TrimRight(path, "/")
 	flow := stream.NewEtcdFlow(cli)
-	etcdLb, err := lb.NewEtcdLoadBalancer(ctx, cli, path, consumerName)
+	etcdLb, err := lb.NewEtcdLoadBalancer(ctx, cli, path, consumerName, opts...)
 	if err != nil {
 		return nil, err
 	}

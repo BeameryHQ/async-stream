@@ -15,8 +15,6 @@ import (
 	"time"
 )
 
-
-
 func main() {
 
 	debugPort := os.Getenv("DEBUG_PORT")
@@ -57,9 +55,10 @@ func main() {
 	path := "/async/jobs"
 	consumerName := fmt.Sprintf("%s-%d", consumerPrefix, consumerIndex)
 	config := &jobs.StreamConsumerConfiguration{
-		Path:         path,
-		ConsumerName: consumerName,
-		Concurrency:  20,
+		Path:            path,
+		ConsumerName:    consumerName,
+		Concurrency:     20,
+		RetentionPeriod: time.Minute * 1,
 	}
 
 	c, err := jobs.NewEtcdStreamConsumer(
@@ -108,6 +107,8 @@ func (t *timeSleepHandler) Handle(jobStore jobs.JobStore, j *jobs.Job, logger *l
 	if err != nil {
 		return fmt.Errorf("saving the progress failed : %v", err)
 	}
+
+	time.Sleep(time.Second * 20)
 
 	r = rand.Intn(10)
 	if r == 1 {

@@ -25,8 +25,9 @@ func main() {
 	taskName := "aws.bucketProcessor"
 	ctx := context.Background()
 
-	for range time.Tick(time.Second * 30) {
-		for i := 0; i < 100; i++ {
+	log.Print("starting up ")
+	for range time.Tick(time.Second * 45) {
+		for i := 0; i < 20; i++ {
 			jobId, err := p.Submit(ctx, taskName, jobs.JobParameters{
 				"bucket": fmt.Sprintf("bucket_%s", strconv.Itoa(i)),
 			},
