@@ -32,8 +32,8 @@ type StreamConsumerConfiguration struct {
 	RunningNoUpdate time.Duration `yaml:"RunningNoUpdate"`
 	FromEnd         bool          `yaml:"FromEnd"`
 	// how often to set the job.UpdateAt field to keep the job running
-	HeartBeatInteval time.Duration `yaml:"HeartBeatInteval"`
-	RetentionPeriod  time.Duration `yaml:"RetentionPeriod"`
+	HeartBeatInterval time.Duration `yaml:"HeartBeatInterval"`
+	RetentionPeriod   time.Duration `yaml:"RetentionPeriod"`
 }
 
 type streamConsumer struct {
@@ -84,7 +84,7 @@ func NewStreamConsumer(ctx context.Context, config *StreamConsumerConfiguration,
 		concurrency:       config.Concurrency,
 		cancel:            cancel,
 		progress:          p,
-		heartBeatInterval: config.HeartBeatInteval,
+		heartBeatInterval: config.HeartBeatInterval,
 	}
 }
 
