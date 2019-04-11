@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func NewEtcdJobStore(cli *clientv3.Client, path string, consumerName string, runningNoUpdate time.Duration) JobStore {
-	kv := kvstore.NewEtcdStore(cli)
-	return NewJobStore(kv, path, consumerName, runningNoUpdate)
+func NewEtcdJobStore(cli *clientv3.Client, path string, consumerName string, runningNoUpdate time.Duration, retentionPeriod time.Duration) JobStore {
+	kv := kvstore.NewEtcdKVStore(cli)
+	return NewJobStore(kv, path, consumerName, runningNoUpdate, retentionPeriod)
 }

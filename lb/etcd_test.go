@@ -1,5 +1,3 @@
-// +build integration
-
 package lb
 
 import (
@@ -68,7 +66,7 @@ func TestEtcdBakedLoadBalancer_Notify(t *testing.T) {
 		res.Cli,
 		path,
 		firstTarget,
-		WithSetleTime(time.Second*3),
+		WithSetleTime(time.Second*1),
 	)
 	if err != nil {
 		t.Fatalf("creating lb1 failed")
@@ -141,7 +139,7 @@ func TestEtcdBakedLoadBalancer_Notify(t *testing.T) {
 		NewRemovedEvent(secondTarget),
 	})
 
-	// also stop the first one and also listen for the
+	// also stop the first one and also listen for the removed
 	lb1.Close()
 	t.Logf("wait for the lb1.close")
 	waitForEvents(t, lb1, []*LbEvent{

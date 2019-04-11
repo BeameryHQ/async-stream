@@ -7,7 +7,9 @@ import (
 	"github.com/BeameryHQ/async-stream/logging"
 	"github.com/BeameryHQ/async-stream/metrics"
 	"github.com/BeameryHQ/async-stream/stream"
+	"github.com/BeameryHQ/async-stream/util"
 	"github.com/Sirupsen/logrus"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/serialx/hashring"
 	"go.etcd.io/etcd/clientv3"
 	"regexp"
@@ -203,7 +205,7 @@ func (l *etcdBackedLoadBalancer) sendBulkNotification(events []*LbEvent) {
 	send := func() {
 		select {
 		case l.notifyBulkChan <- finalEvents:
-			l.logger.Debugf("send bulk notification : %+v", finalEvents)
+			l.logger.Debugf("send bulk notification : %s", spew.Sdump(finalEvents))
 		default:
 			return
 		}
@@ -313,7 +315,7 @@ func (l *etcdBackedLoadBalancer) addTargetRemote(ctx context.Context, target str
 					l.setPause()
 					l.logger.Errorf("keepalive channel was closed, will retry to recover")
 					keepAliveChan = nil
-					err = RetryNormal(func() error {
+					err = util.RetryNormal(func() error {
 						l.logger.Warningf("retry to recover the channel")
 						var err error
 						keepAliveChan, err = l.getKeepAliveChan(ctx, key)

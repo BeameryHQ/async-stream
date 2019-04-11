@@ -21,6 +21,8 @@ type Job struct {
 	MaxRetry     int64         `json:"MaxRetry"`
 	CurrentRetry int64         `json:"CurrentRetry"`
 	Errors       []string      `json:"Errors"`
+	// attached to the job when picked up by the consumer
+	ConsumerName string        `json:"ConsumerName"`
 }
 
 func NewJob(taskName string, args JobParameters) (string, *Job) {

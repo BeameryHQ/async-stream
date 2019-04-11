@@ -6,7 +6,7 @@ import (
 )
 
 func NewEtcdJobProducer(cli *clientv3.Client, path string) Producer {
-	kv := kvstore.NewEtcdStore(cli)
+	kv := kvstore.NewEtcdKVStore(cli)
 	return &producerProvider{
 		cli:  kv,
 		path: path,

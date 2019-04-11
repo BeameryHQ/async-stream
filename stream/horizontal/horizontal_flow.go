@@ -138,17 +138,23 @@ func (f *FlowProcessorProvider) watchHandler(event *stream.FlowEvent) error {
 	}
 
 	ok, err := f.isEventForMe(event)
-	if err != nil || !ok {
-
-		// if event is not for this one and is deleted rm from the cache now
-		if !ok && event.IsDeleted() {
-			f.cache.del(event.Kv.Key)
-		}
+	if err != nil {
 		return err
 	}
 
+	// if event is deleted and not for me remove from the cache
+	if !ok && event.IsDeleted() {
+		f.cache.del(event.Kv.Key)
+		return nil
+	}
+
+	// no matter what populate the cache
 	f.cache.put(event.Kv.Key, event)
-	f.queue.Add(event.Kv.Key)
+
+	// only do this if event is for this consumer otherwise skip
+	if ok {
+		f.queue.Add(event.Kv.Key)
+	}
 	return nil
 }
 
@@ -233,5 +239,3 @@ func (f *FlowProcessorProvider) shouldSkipPath(path string) bool {
 
 	return strings.HasPrefix(path, parentPath)
 }
-
-
