@@ -16,7 +16,7 @@ Project's aim is to supply convenient utilities for stream processing.Currently 
 #### Installation
 
 
-  - `go get -u github.com/SeedJobs/async-stream`
+  - `go get -u github.com/SeedJobs/async-stream/...`
   
   or if using dep : 
   
