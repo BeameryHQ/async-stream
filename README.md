@@ -1,15 +1,15 @@
 ## Asynchronous Stream Processing Utilities
 
-Project's aim is to supply convenient utilities for stream processing.Currently they work only against etcd.
+Project's aim is to supply convenient utilities for stream processing. Currently they work only against [etcd](https://github.com/etcd-io/etcd).
 
- - stream: package contains an interface for registering event processors for certain paths so, the user
+ - `stream`: package contains an interface for registering event processors for certain paths so, the user
  doesn't have to deal with low level details of the backing store.
  
- - lb: has implementation backed by etcd that helps with load balancing. Given a certain routing key it helps to
+ - `lb`: has implementation backed by etcd that helps with load balancing. Given a certain routing key it helps to
  find the target and also handles the dynamic targets being added and removed from the system.
  
- - jobs: has an implementation of worker system that uses `stream` and `lb` packages.
- Currently it works against etcd and helps with processing of background jobs.
+ - `jobs`: has an implementation of worker system that uses `stream` and `lb` packages.
+ Currently it works against [etcd](https://github.com/etcd-io/etcd) and helps with processing of background jobs.
  
  
  
@@ -103,4 +103,4 @@ in case a certain job was re-assigned to current consumer instance.
  
 
 
-For more detailed examples check the `examples` directory.
+For more detailed examples check the [examples](https://github.com/BeameryHQ/async-stream/tree/master/examples) directory.
