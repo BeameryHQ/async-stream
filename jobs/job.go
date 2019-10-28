@@ -1,7 +1,7 @@
 package jobs
 
 import (
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/satori/go.uuid"
 	"time"
 )

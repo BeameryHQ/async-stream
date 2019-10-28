@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/BeameryHQ/async-stream/tests"
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"os"
 	"sync"
 	"testing"
