@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/BeameryHQ/async-stream/lb"
 	"github.com/BeameryHQ/async-stream/stream"
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/util/workqueue"
 	"strings"
 	"sync"

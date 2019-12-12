@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/BeameryHQ/async-stream/logging"
 	"github.com/BeameryHQ/async-stream/stream/horizontal"
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 )
 

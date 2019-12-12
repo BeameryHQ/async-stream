@@ -5,7 +5,7 @@ import (
 	"fmt"
 	kvstore2 "github.com/BeameryHQ/async-stream/kvstore"
 	"github.com/BeameryHQ/async-stream/tests"
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"os"
 	"strings"
 	"sync"

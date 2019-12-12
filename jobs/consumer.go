@@ -8,7 +8,7 @@ import (
 	"github.com/BeameryHQ/async-stream/metrics"
 	"github.com/BeameryHQ/async-stream/stream"
 	"github.com/BeameryHQ/async-stream/stream/horizontal"
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/util/workqueue"
 	"math"
 	"regexp"

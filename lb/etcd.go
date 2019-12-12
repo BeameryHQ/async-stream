@@ -8,7 +8,7 @@ import (
 	"github.com/BeameryHQ/async-stream/metrics"
 	"github.com/BeameryHQ/async-stream/stream"
 	"github.com/BeameryHQ/async-stream/util"
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/serialx/hashring"
 	"go.etcd.io/etcd/clientv3"

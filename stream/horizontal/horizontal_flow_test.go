@@ -6,7 +6,7 @@ import (
 	"github.com/BeameryHQ/async-stream/lb"
 	"github.com/BeameryHQ/async-stream/stream"
 	"github.com/BeameryHQ/async-stream/tests"
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"log"
 	"os"
 	"sync"
